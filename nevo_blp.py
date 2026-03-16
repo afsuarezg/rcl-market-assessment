@@ -100,16 +100,27 @@ _NEVO_PI    = np.array([
 def build_initial_params(
     x2_vars: list[str],
     demo_vars: Optional[list[str]] = None,
+    n_instruments: Optional[int] = None,
     sigma_scale: float = 1.0,
+    seed: int = 0,
 ) -> tuple[np.ndarray, Optional[np.ndarray]]:
     """
     Return (sigma_init, pi_init) appropriate for the given specification.
 
     When x2_vars == ['sugar', 'mushy'] and demo_vars == all four Nevo demographics,
     the Nevo (2000a) published starting values are returned. Otherwise a scaled
-    identity sigma and a zero pi are returned.
+    identity sigma and nonzero random pi are returned (zeros would fix params at zero
+    in pyblp's sparsity convention).
 
     K2 = 2 + len(x2_vars)  (constant + prices + x2_vars)
+
+    Parameters
+    ----------
+    n_instruments
+        Number of excluded demand instruments. If provided, an order-condition
+        check is performed and a ValueError is raised if the spec is underidentified.
+    seed
+        RNG seed for random pi starting values (ensures reproducibility).
     """
     # Use Nevo's published starting values for the exact baseline specification
     if x2_vars == _NEVO_X2 and demo_vars == _NEVO_DEMOS:
@@ -119,7 +130,21 @@ def build_initial_params(
     sigma_init = np.eye(K2) * sigma_scale
     if demo_vars is None:
         return sigma_init, None
-    pi_init = np.zeros((K2, len(demo_vars)))
+
+    # Guard: check order condition before returning nonzero pi
+    if n_instruments is not None:
+        n_nonzero = K2 + K2 * len(demo_vars)
+        if n_nonzero > n_instruments:
+            raise ValueError(
+                f"Specification requires {n_nonzero} nonlinear parameters "
+                f"but only {n_instruments} excluded instruments are available. "
+                "Reduce x2_vars or demo_vars, or restrict some pi entries to zero."
+            )
+
+    # Random nonzero starting values — all entries nonzero so pyblp estimates them
+    # freely. Uses standard normal draws; seed ensures reproducibility across runs.
+    rng = np.random.default_rng(seed)
+    pi_init = rng.standard_normal((K2, len(demo_vars)))
     return sigma_init, pi_init
 
 
@@ -155,13 +180,18 @@ def run_specification(
     integration_size: int = 5,
     gtol: float = 1e-5,
     method: str = '1s',
+    seed: int = 0,
 ) -> pyblp.ProblemResults:
     """Build the problem, construct initial parameters, and solve — all in one call."""
     problem = build_problem(
         product_data, agent_data, x2_vars, demo_vars,
         integration=integration, integration_size=integration_size,
+        seed=seed,
     )
-    sigma_init, pi_init = build_initial_params(x2_vars, demo_vars)
+    n_instr = len([c for c in product_data.columns if c.startswith('demand_instruments')])
+    sigma_init, pi_init = build_initial_params(
+        x2_vars, demo_vars, n_instruments=n_instr, seed=seed
+    )
     return solve_spec(problem, sigma_init, pi_init, gtol=gtol, method=method)
 
 
@@ -198,8 +228,9 @@ if __name__ == '__main__':
         ['sugar', 'mushy'],                            # Nevo (2000a) baseline
     ]
     demo_combos = [
-        None,                                          # no demographics
+        # None,                                          # no demographics
         ['income', 'age'],
+        ['income', 'age', 'child'],
         ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
     ]
 
