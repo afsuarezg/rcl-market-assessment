@@ -11,10 +11,17 @@ Run as a script to compare estimates across different characteristic specificati
 import pyblp
 import numpy as np
 import pandas as pd
-from typing import Optional
+from typing import NamedTuple, Optional
 
 pyblp.options.digits = 2
 pyblp.options.verbose = False
+
+
+class StartResult(NamedTuple):
+    """Bundles a solved result with the initial parameters used to start it."""
+    result:     pyblp.ProblemResults
+    sigma_init: np.ndarray
+    pi_init:    Optional[np.ndarray]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -219,7 +226,7 @@ def run_multistart(
     integration_size: int = 5,
     gtol: float = 1e-5,
     method: str = '1s',
-) -> list[pyblp.ProblemResults]:
+) -> list[StartResult]:
     """
     Solve a specification n_starts times from different random starting points.
 
@@ -227,7 +234,8 @@ def run_multistart(
     otherwise. Starts 1..n_starts-1 always use fresh random draws (force_random=True)
     with seed = base_seed + start_index to ensure reproducibility.
 
-    Returns results sorted ascending by objective (best = index 0).
+    Returns StartResult objects sorted ascending by objective (best = index 0).
+    Each StartResult exposes .result, .sigma_init, and .pi_init.
     """
     problem = build_problem(
         product_data, agent_data, x2_vars, demo_vars,
@@ -247,9 +255,9 @@ def run_multistart(
             force_random=force_random,
         )
         res = solve_spec(problem, sigma_init, pi_init, gtol=gtol, method=method)
-        results.append(res)
+        results.append(StartResult(result=res, sigma_init=sigma_init, pi_init=pi_init))
 
-    return sorted(results, key=lambda r: float(r.objective))
+    return sorted(results, key=lambda sr: float(sr.result.objective))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -260,43 +268,53 @@ def compare_results(results_dict: dict[str, pyblp.ProblemResults]) -> pd.DataFra
     """
     Summarise a collection of solved specifications into a tidy DataFrame.
 
-    Columns: price_coef (alpha hat), objective value.
+    Columns: price_coef, objective, sigma_0 … sigma_{K2-1},
+             and (when demographics are present) pi_{i}_{j} for each entry.
     """
     rows = []
     for label, res in results_dict.items():
-        rows.append({
+        row = {
             'label':      label,
             'price_coef': float(res.beta[0]),
             'objective':  float(res.objective),
-        })
+        }
+        for i, v in enumerate(np.diag(res.sigma)):
+            row[f'sigma_{i}'] = float(v)
+        if res.pi is not None:
+            for i in range(res.pi.shape[0]):
+                for j in range(res.pi.shape[1]):
+                    row[f'pi_{i}_{j}'] = float(res.pi[i, j])
+        rows.append(row)
     return pd.DataFrame(rows).set_index('label')
 
 
 def compare_multistart_results(
-    multistart_dict: dict[str, list[pyblp.ProblemResults]],
+    multistart_dict: dict[str, list[StartResult]],
 ) -> pd.DataFrame:
     """
     Summarise multi-start results into a tidy DataFrame.
 
-    Parameters
-    ----------
-    multistart_dict
-        {label: [results sorted best-first]} as returned by run_multistart.
-
-    Returns a DataFrame with columns:
-        spec, start, price_coef, objective, best
-    where `best` is True for the lowest-objective run within each spec.
+    Columns: spec, start, price_coef, objective, best,
+             init_sigma_0 … init_sigma_{K2-1},
+             and (when demographics are present) init_pi_{i}_{j}.
     """
     rows = []
-    for label, res_list in multistart_dict.items():
-        for i, res in enumerate(res_list):
-            rows.append({
+    for label, sr_list in multistart_dict.items():
+        for i, sr in enumerate(sr_list):
+            row = {
                 'spec':       label,
                 'start':      i,
-                'price_coef': float(res.beta[0]),
-                'objective':  float(res.objective),
-                'best':       (i == 0),   # list is sorted best-first
-            })
+                'price_coef': float(sr.result.beta[0]),
+                'objective':  float(sr.result.objective),
+                'best':       (i == 0),
+            }
+            for k, v in enumerate(np.diag(sr.sigma_init)):
+                row[f'init_sigma_{k}'] = float(v)
+            if sr.pi_init is not None:
+                for r in range(sr.pi_init.shape[0]):
+                    for c in range(sr.pi_init.shape[1]):
+                        row[f'init_pi_{r}_{c}'] = float(sr.pi_init[r, c])
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -307,7 +325,7 @@ def compare_multistart_results(
 if __name__ == '__main__':
     product_data, agent_data = load_data()
 
-    N_STARTS = 5   # number of random restarts per specification
+    N_STARTS = 3  # number of random restarts per specification
 
     x2_combos = [
         # ['sugar'],
@@ -316,8 +334,8 @@ if __name__ == '__main__':
     ]
     demo_combos = [
         ['income', 'age'],
-        ['income', 'age', 'child'],
-        ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
+        # ['income', 'age', 'child'],
+        # ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
     ]
 
     multistart_results = {}
