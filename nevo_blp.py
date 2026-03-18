@@ -108,7 +108,6 @@ def build_initial_params(
     x2_vars: list[str],
     demo_vars: Optional[list[str]] = None,
     n_instruments: Optional[int] = None,
-    sigma_scale: float = 1.0,
     seed: int = 0,
     force_random: bool = False,   # NEW: skip Nevo-baseline detection
 ) -> tuple[np.ndarray, Optional[np.ndarray]]:
@@ -116,9 +115,10 @@ def build_initial_params(
     Return (sigma_init, pi_init) appropriate for the given specification.
 
     When x2_vars == ['sugar', 'mushy'] and demo_vars == all four Nevo demographics,
-    the Nevo (2000a) published starting values are returned. Otherwise a scaled
-    identity sigma and nonzero random pi are returned (zeros would fix params at zero
-    in pyblp's sparsity convention).
+    the Nevo (2000a) published starting values are returned. Otherwise sigma_init
+    is a diagonal matrix whose entries are drawn from Uniform(0, 1) using the
+    provided seed, and nonzero random pi are returned (zeros would fix params at
+    zero in pyblp's sparsity convention).
 
     K2 = 2 + len(x2_vars)  (constant + prices + x2_vars)
 
@@ -128,7 +128,7 @@ def build_initial_params(
         Number of excluded demand instruments. If provided, an order-condition
         check is performed and a ValueError is raised if the spec is underidentified.
     seed
-        RNG seed for random pi starting values (ensures reproducibility).
+        RNG seed for random sigma and pi starting values (ensures reproducibility).
     force_random
         If True, skip the Nevo-baseline detection and always draw random values.
         Useful for multistart optimization where subsequent starts need fresh draws.
@@ -138,12 +138,12 @@ def build_initial_params(
         return _NEVO_SIGMA.copy(), _NEVO_PI.copy()
 
     K2 = 2 + len(x2_vars)
-    sigma_init = np.eye(K2) * sigma_scale
+    rng = np.random.default_rng(seed)
+    sigma_init = np.diag(rng.uniform(0, 1, K2))
     if demo_vars is None:
         return sigma_init, None
 
     # Draw pi — all entries start nonzero so pyblp estimates them freely.
-    rng = np.random.default_rng(seed)
     pi_init = rng.standard_normal((K2, len(demo_vars)))
 
     # Order-condition guard: if more nonzero params than instruments, zero out

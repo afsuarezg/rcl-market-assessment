@@ -136,29 +136,29 @@ product_formulations
 # In[ ]:
 
 
-mc_integration = pyblp.Integration('monte_carlo', size=50, specification_options={'seed': 0})
-mc_integration
+# mc_integration = pyblp.Integration('monte_carlo', size=50, specification_options={'seed': 0})
+# mc_integration
 
 
 # In[ ]:
 
 
-pr_integration = pyblp.Integration('product', size=5)
-pr_integration
+# pr_integration = pyblp.Integration('product', size=5)
+# pr_integration
 
 
 # In[ ]:
 
 
-mc_problem = pyblp.Problem(product_formulations, product_data, integration=mc_integration)
-mc_problem
+# mc_problem = pyblp.Problem(product_formulations, product_data, integration=mc_integration)
+# mc_problem
 
 
 # In[ ]:
 
 
-pr_problem = pyblp.Problem(product_formulations, product_data, integration=pr_integration)
-pr_problem
+# pr_problem = pyblp.Problem(product_formulations, product_data, integration=pr_integration)
+# pr_problem
 
 
 # As an illustration of how to configure the optimization routine, we'll use a simpler, non-default [`Optimization`](https://pyblp.readthedocs.io/en/stable/_api/pyblp.Optimization.html#pyblp.Optimization) configuration that doesn't support parameter bounds, and use a relatively loose tolerance so the problems are solved quickly. In practice along with more integration draws, it's a good idea to use a tighter termination tolerance.
@@ -181,22 +181,22 @@ bfgs
 # In[ ]:
 
 
-results1 = mc_problem.solve(sigma=np.ones((4, 4)), optimization=bfgs)
-results1
+# results1 = mc_problem.solve(sigma=np.ones((4, 4)), optimization=bfgs)
+# results1
 
 
 # In[1]:
 
 
-results2 = pr_problem.solve(sigma=np.ones((4, 4)), optimization=bfgs)
-results2
+# results2 = pr_problem.solve(sigma=np.ones((4, 4)), optimization=bfgs)
+# results2
 
 
 # In[1]:
 
 
-results3 = mc_problem.solve(sigma=np.eye(4), optimization=bfgs)
-results3
+# results3 = mc_problem.solve(sigma=np.eye(4), optimization=bfgs)
+# results3
 
 
 # We see that all three models give similar estimates of the price coefficient $\hat{\alpha} \approx -30$. Note a few of the estimated terms on the diagonal of $\Sigma$ are negative. Since the diagonal consists of standard deviations, negative values are unrealistic. When using another optimization routine that supports bounds (like the default L-BFGS-B routine), these diagonal elements are by default bounded from below by zero.
