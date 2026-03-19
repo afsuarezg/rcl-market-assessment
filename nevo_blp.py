@@ -327,18 +327,46 @@ def compare_multistart_results(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. Script entry point — grid over specifications
+# 8. Post-estimation summary
+# ─────────────────────────────────────────────────────────────────────────────
+
+def summarise_post_estimation(
+    multistart_results: dict[str, list[StartResult]],
+) -> pd.DataFrame:
+    """
+    Compute mean own-price elasticities and outside-good diversion ratios
+    for each specification, using the best start (index 0).
+
+    Returns a DataFrame with index = spec label and columns:
+        mean_own_elas     — mean own-price elasticity across products & markets
+        mean_outside_div  — mean diversion to outside good across products & markets
+    """
+    rows = []
+    for label, starts in multistart_results.items():
+        res = starts[0].result
+        mean_own_elas    = res.extract_diagonal_means(res.compute_elasticities())
+        mean_outside_div = res.extract_diagonal_means(res.compute_diversion_ratios())
+        rows.append({
+            'label':           label,
+            'mean_own_elas':   float(np.asarray(mean_own_elas).mean()),
+            'mean_outside_div': float(np.asarray(mean_outside_div).mean()),
+        })
+    return pd.DataFrame(rows).set_index('label')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Script entry point — grid over specifications
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     product_data, agent_data = load_data()
 
-    N_STARTS = 3  # number of random restarts per specification
+    N_STARTS = 2  # number of random restarts per specification
 
     x2_combos = [
         # ['sugar'],
-        # ['mushy'],
-        ['sugar', 'mushy'],
+        ['mushy'],
+        # ['sugar', 'mushy'],
     ]
     demo_combos = [
         ['income', 'age'],
@@ -358,7 +386,17 @@ if __name__ == '__main__':
     detail = compare_multistart_results(multistart_results)
     print("\n=== All Starts ===")
     print(detail.to_string(index=False))
+    detail.to_csv('multistart_all.csv', index=False)
+    print("Saved: multistart_all.csv")
 
     print("\n=== Best per Specification ===")
     best = detail[detail['best']].drop(columns='best').set_index('spec')
     print(best.to_string())
+    best.to_csv('multistart_best.csv')
+    print("Saved: multistart_best.csv")
+
+    print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
+    post = summarise_post_estimation(multistart_results)
+    print(post.to_string())
+    post.to_csv('post_estimation_summary.csv')
+    print("Saved: post_estimation_summary.csv")
