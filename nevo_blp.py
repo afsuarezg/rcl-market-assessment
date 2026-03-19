@@ -296,7 +296,9 @@ def compare_multistart_results(
 
     Columns: spec, start, price_coef, objective, best,
              init_sigma_0 … init_sigma_{K2-1},
-             and (when demographics are present) init_pi_{i}_{j}.
+             (when demographics are present) init_pi_{i}_{j},
+             est_sigma_0 … est_sigma_{K2-1},
+             and (when demographics are present) est_pi_{i}_{j}.
     """
     rows = []
     for label, sr_list in multistart_dict.items():
@@ -314,6 +316,12 @@ def compare_multistart_results(
                 for r in range(sr.pi_init.shape[0]):
                     for c in range(sr.pi_init.shape[1]):
                         row[f'init_pi_{r}_{c}'] = float(sr.pi_init[r, c])
+            for k, v in enumerate(np.diag(sr.result.sigma)):
+                row[f'est_sigma_{k}'] = float(v)
+            if sr.result.pi is not None:
+                for r in range(sr.result.pi.shape[0]):
+                    for c in range(sr.result.pi.shape[1]):
+                        row[f'est_pi_{r}_{c}'] = float(sr.result.pi[r, c])
             rows.append(row)
     return pd.DataFrame(rows)
 
