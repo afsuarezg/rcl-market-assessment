@@ -361,16 +361,16 @@ def summarise_post_estimation(
 if __name__ == '__main__':
     product_data, agent_data = load_data()
 
-    N_STARTS = 2  # number of random restarts per specification
+    N_STARTS = 1  # number of random restarts per specification
 
     x2_combos = [
-        # ['sugar'],
+        ['sugar'],
         ['mushy'],
         # ['sugar', 'mushy'],
     ]
     demo_combos = [
         ['income', 'age'],
-        # ['income', 'age', 'child'],
+        ['income', 'age', 'child'],
         # ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
     ]
 
