@@ -5,7 +5,8 @@
       "Bash(python:*)",
       "Bash(find . -name .gitignore -o -name *.cfg -o -name setup.py -o -name pyproject.toml)",
       "Bash(git:*)",
-      "Bash(find /c/Users/Andres.DESKTOP-D77KM25/Documents/rcl_market_assessment -type f -name *.md -o -name *.txt -o -name *.toml -o -name *.cfg -o -name *.ini)"
+      "Bash(find /c/Users/Andres.DESKTOP-D77KM25/Documents/rcl_market_assessment -type f -name *.md -o -name *.txt -o -name *.toml -o -name *.cfg -o -name *.ini)",
+      "Bash(.venv/Scripts/python nevo_blp.py)"
     ]
   }
 }

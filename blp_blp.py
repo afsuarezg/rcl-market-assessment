@@ -466,23 +466,31 @@ def export_elasticities(
     runs of the same spec to be distinguished when rows are appended.
     """
     rows = []
+    # Sort to match PyBLP's internal product ordering (by market_ids ascending)
+    product_data = product_data.sort_values('market_ids').reset_index(drop=True)
     markets = np.sort(product_data['market_ids'].unique())
     for label, starts in multistart_results.items():
         best = starts[0]
         res  = best.result
         seed = best.seed
+        # compute_elasticities() returns a flat (N,) array; each element is a
+        # 1-D array of length J_t — the j-th row of the J_t × J_t matrix.
         elasticities = res.compute_elasticities()
 
         # Accumulate elasticity values per (product_j, product_k) pair across markets
         pair_vals: dict[tuple, list[float]] = {}
-        for t, market_id in enumerate(markets):
+        flat_idx = 0
+        for market_id in markets:
             mask = product_data['market_ids'] == market_id
             product_ids = product_data.loc[mask, 'product_ids'].values
-            E_t = elasticities[t]
+            J_t = len(product_ids)
+            # Stack J_t rows → J_t × J_t matrix
+            E_t = np.stack(list(elasticities[flat_idx:flat_idx + J_t]))
             for j, prod_j in enumerate(product_ids):
                 for k, prod_k in enumerate(product_ids):
                     pair = (prod_j, prod_k)
                     pair_vals.setdefault(pair, []).append(float(E_t[j, k]))
+            flat_idx += J_t
 
         for (prod_j, prod_k), vals in pair_vals.items():
             rows.append({
