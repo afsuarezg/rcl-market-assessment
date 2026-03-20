@@ -437,13 +437,14 @@ def export_elasticities(
     product_data: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Export all own- and cross-price elasticities for each specification
-    (best start only) in long format.
+    Export own- and cross-price elasticities aggregated (averaged) over all
+    markets, one row per (spec, seed, product_j, product_k).
 
-    Columns: spec, seed, market_id, product_j, product_k, elasticity, own_price
+    Columns: spec, seed, product_j, product_k, elasticity, own_price
 
-    seed identifies the best start's random seed, allowing multiple runs of
-    the same spec to be distinguished when rows are appended across sessions.
+    elasticity is the mean of ε_jkt across all markets where both j and k
+    appear. seed identifies the best start's random seed, allowing multiple
+    runs of the same spec to be distinguished when rows are appended.
     """
     rows = []
     markets = np.sort(product_data['market_ids'].unique())
@@ -452,21 +453,27 @@ def export_elasticities(
         res  = best.result
         seed = best.seed
         elasticities = res.compute_elasticities()
+
+        # Accumulate elasticity values per (product_j, product_k) pair across markets
+        pair_vals: dict[tuple, list[float]] = {}
         for t, market_id in enumerate(markets):
             mask = product_data['market_ids'] == market_id
             product_ids = product_data.loc[mask, 'product_ids'].values
             E_t = elasticities[t]
             for j, prod_j in enumerate(product_ids):
                 for k, prod_k in enumerate(product_ids):
-                    rows.append({
-                        'spec':       label,
-                        'seed':       seed,
-                        'market_id':  market_id,
-                        'product_j':  prod_j,
-                        'product_k':  prod_k,
-                        'elasticity': float(E_t[j, k]),
-                        'own_price':  j == k,
-                    })
+                    pair = (prod_j, prod_k)
+                    pair_vals.setdefault(pair, []).append(float(E_t[j, k]))
+
+        for (prod_j, prod_k), vals in pair_vals.items():
+            rows.append({
+                'spec':       label,
+                'seed':       seed,
+                'product_j':  prod_j,
+                'product_k':  prod_k,
+                'elasticity': float(np.mean(vals)),
+                'own_price':  prod_j == prod_k,
+            })
     return pd.DataFrame(rows)
 
 
