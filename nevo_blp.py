@@ -504,8 +504,8 @@ if __name__ == '__main__':
     ]
     demo_combos = [
         ['income', 'age'],
-        ['income', 'age', 'child'],
-        ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
+        # ['income', 'age', 'child'],
+        # ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
     ]
 
     multistart_results = {}
