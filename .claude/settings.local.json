@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:pyblp.readthedocs.io)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(find . -name .gitignore -o -name *.cfg -o -name setup.py -o -name pyproject.toml)",
+      "Bash(git:*)"
     ]
   }
 }

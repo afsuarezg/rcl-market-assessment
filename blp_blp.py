@@ -455,10 +455,10 @@ if __name__ == '__main__':
 
     product_data, agent_data = load_data()
 
-    N_STARTS = 3  # number of random restarts per specification
+    N_STARTS = 1  # number of random restarts per specification
 
     x2_combos = [
-        ['hpwt', 'air', 'mpd', 'space'],  # full BLP (1995) spec
+        # ['hpwt', 'air', 'mpd', 'space'],  # full BLP (1995) spec
         ['hpwt', 'air', 'mpd'],
         # ['hpwt', 'air'],
     ]
