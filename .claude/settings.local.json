@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:pyblp.readthedocs.io)",
+      "Bash(python:*)"
+    ]
+  }
+}

@@ -11,6 +11,7 @@ Run as a script to compare estimates across different characteristic specificati
 import pyblp
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from typing import NamedTuple, Optional
 
 pyblp.options.digits = 2
@@ -332,25 +333,96 @@ def compare_multistart_results(
 
 def summarise_post_estimation(
     multistart_results: dict[str, list[StartResult]],
+    product_data: pd.DataFrame,
+    include_supply: bool = True,
 ) -> pd.DataFrame:
     """
-    Compute mean own-price elasticities and outside-good diversion ratios
-    for each specification, using the best start (index 0).
+    Compute demand- and supply-side post-estimation statistics for each
+    specification, using the best start (index 0).
 
-    Returns a DataFrame with index = spec label and columns:
-        mean_own_elas     — mean own-price elasticity across products & markets
-        mean_outside_div  — mean diversion to outside good across products & markets
+    Demand columns (always present):
+        mean_own_elas     — mean own-price elasticity
+        mean_outside_div  — mean diversion to outside good
+
+    Supply columns (present when results include a supply side and
+    include_supply=True):
+        mean_markup       — mean markup  (p − mc) / p
+        mean_hhi          — mean HHI across markets
+        mean_delta_markup — mean markup change from merging firm 2 → 1
+        mean_delta_hhi    — mean HHI change from merging firm 2 → 1
+        mean_delta_cs     — mean consumer-surplus change from merging firm 2 → 1
+
+    Supply columns are NaN when the result has no marginal-cost estimates or
+    when include_supply=False.
+
+    Parameters
+    ----------
+    multistart_results:
+        Mapping of spec label → list of StartResult (best start at index 0).
+    product_data:
+        Product-level DataFrame used to build merger firm_ids.
+    include_supply:
+        If False, skip all supply-side calculations even when the result
+        includes marginal-cost estimates. Default True.
     """
     rows = []
     for label, starts in multistart_results.items():
         res = starts[0].result
-        mean_own_elas    = res.extract_diagonal_means(res.compute_elasticities())
-        mean_outside_div = res.extract_diagonal_means(res.compute_diversion_ratios())
-        rows.append({
+
+        mean_own_elas    = float(
+            np.asarray(res.extract_diagonal_means(res.compute_elasticities())).mean()
+        )
+        mean_outside_div = float(
+            np.asarray(res.extract_diagonal_means(res.compute_diversion_ratios())).mean()
+        )
+
+        row: dict = {
             'label':           label,
-            'mean_own_elas':   float(np.asarray(mean_own_elas).mean()),
-            'mean_outside_div': float(np.asarray(mean_outside_div).mean()),
-        })
+            'mean_own_elas':   mean_own_elas,
+            'mean_outside_div': mean_outside_div,
+            'mean_markup':     np.nan,
+            'mean_hhi':        np.nan,
+            'mean_delta_markup': np.nan,
+            'mean_delta_hhi':  np.nan,
+            'mean_delta_cs':   np.nan,
+        }
+
+        # Supply-side statistics (only when marginal costs are available and requested)
+        if include_supply:
+            try:
+                costs   = res.compute_costs()
+                markups = res.compute_markups(costs=costs)
+                hhi     = res.compute_hhi()
+                cs      = res.compute_consumer_surpluses()
+
+                row['mean_markup'] = float(np.asarray(markups).mean())
+                row['mean_hhi']    = float(np.asarray(hhi).mean())
+
+                # Merger simulation: firm 2 acquires firm 1 (BLP tutorial convention)
+                merger_ids    = product_data['firm_ids'].replace(2, 1)
+                changed_prices = res.compute_prices(
+                    firm_ids=merger_ids, costs=costs
+                )
+                changed_shares = res.compute_shares(changed_prices)
+                changed_markups = res.compute_markups(changed_prices, costs)
+                changed_hhi     = res.compute_hhi(
+                    firm_ids=merger_ids, shares=changed_shares
+                )
+                changed_cs      = res.compute_consumer_surpluses(changed_prices)
+
+                row['mean_delta_markup'] = float(
+                    np.asarray(changed_markups - markups).mean()
+                )
+                row['mean_delta_hhi'] = float(
+                    np.asarray(changed_hhi - hhi).mean()
+                )
+                row['mean_delta_cs'] = float(
+                    np.asarray(changed_cs - cs).mean()
+                )
+            except (AttributeError, pyblp.exceptions.MultipleErrors):
+                pass
+
+        rows.append(row)
     return pd.DataFrame(rows).set_index('label')
 
 
@@ -359,9 +431,12 @@ def summarise_post_estimation(
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    OUT_DIR = Path('results/nevo')
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
     product_data, agent_data = load_data()
 
-    N_STARTS = 1  # number of random restarts per specification
+    N_STARTS = 2  # number of random restarts per specification
 
     x2_combos = [
         ['sugar'],
@@ -370,7 +445,7 @@ if __name__ == '__main__':
     ]
     demo_combos = [
         ['income', 'age'],
-        ['income', 'age', 'child'],
+        # ['income', 'age', 'child'],
         # ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
     ]
 
@@ -386,17 +461,17 @@ if __name__ == '__main__':
     detail = compare_multistart_results(multistart_results)
     print("\n=== All Starts ===")
     print(detail.to_string(index=False))
-    detail.to_csv('multistart_all.csv', index=False)
+    detail.to_csv(OUT_DIR / 'multistart_all.csv', index=False)
     print("Saved: multistart_all.csv")
 
     print("\n=== Best per Specification ===")
     best = detail[detail['best']].drop(columns='best').set_index('spec')
     print(best.to_string())
-    best.to_csv('multistart_best.csv')
+    best.to_csv(OUT_DIR / 'multistart_best.csv')
     print("Saved: multistart_best.csv")
 
     print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
-    post = summarise_post_estimation(multistart_results)
+    post = summarise_post_estimation(multistart_results, product_data, include_supply=False)
     print(post.to_string())
-    post.to_csv('post_estimation_summary.csv')
+    post.to_csv(OUT_DIR / 'post_estimation_summary.csv')
     print("Saved: post_estimation_summary.csv")
