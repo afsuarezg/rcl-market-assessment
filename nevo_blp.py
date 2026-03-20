@@ -23,6 +23,7 @@ class StartResult(NamedTuple):
     result:     pyblp.ProblemResults
     sigma_init: np.ndarray
     pi_init:    Optional[np.ndarray]
+    seed:       int
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -256,7 +257,7 @@ def run_multistart(
             force_random=force_random,
         )
         res = solve_spec(problem, sigma_init, pi_init, gtol=gtol, method=method)
-        results.append(StartResult(result=res, sigma_init=sigma_init, pi_init=pi_init))
+        results.append(StartResult(result=res, sigma_init=sigma_init, pi_init=pi_init, seed=seed))
 
     return sorted(results, key=lambda sr: float(sr.result.objective))
 
@@ -307,6 +308,7 @@ def compare_multistart_results(
             row = {
                 'spec':       label,
                 'start':      i,
+                'seed':       sr.seed,
                 'price_coef': float(sr.result.beta[0]),
                 'objective':  float(sr.result.objective),
                 'best':       (i == 0),
@@ -427,8 +429,58 @@ def summarise_post_estimation(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 9. Script entry point — grid over specifications
+# 9. Elasticity export
 # ─────────────────────────────────────────────────────────────────────────────
+
+def export_elasticities(
+    multistart_results: dict[str, list[StartResult]],
+    product_data: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Export all own- and cross-price elasticities for each specification
+    (best start only) in long format.
+
+    Columns: spec, seed, market_id, product_j, product_k, elasticity, own_price
+
+    seed identifies the best start's random seed, allowing multiple runs of
+    the same spec to be distinguished when rows are appended across sessions.
+    """
+    rows = []
+    markets = np.sort(product_data['market_ids'].unique())
+    for label, starts in multistart_results.items():
+        best = starts[0]
+        res  = best.result
+        seed = best.seed
+        elasticities = res.compute_elasticities()
+        for t, market_id in enumerate(markets):
+            mask = product_data['market_ids'] == market_id
+            product_ids = product_data.loc[mask, 'product_ids'].values
+            E_t = elasticities[t]
+            for j, prod_j in enumerate(product_ids):
+                for k, prod_k in enumerate(product_ids):
+                    rows.append({
+                        'spec':       label,
+                        'seed':       seed,
+                        'market_id':  market_id,
+                        'product_j':  prod_j,
+                        'product_k':  prod_k,
+                        'elasticity': float(E_t[j, k]),
+                        'own_price':  j == k,
+                    })
+    return pd.DataFrame(rows)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. Script entry point — grid over specifications
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True) -> None:
+    """Write df to path, appending below existing rows if the file exists."""
+    if path.exists():
+        existing = pd.read_csv(path, index_col=0 if index else None)
+        df = pd.concat([existing, df])
+    df.to_csv(path, index=index)
+
 
 if __name__ == '__main__':
     OUT_DIR = Path('results/nevo')
@@ -445,33 +497,47 @@ if __name__ == '__main__':
     ]
     demo_combos = [
         ['income', 'age'],
-        # ['income', 'age', 'child'],
-        # ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
+        ['income', 'age', 'child'],
+        ['income', 'income_squared', 'age', 'child'],  # Nevo (2000a) baseline
     ]
 
     multistart_results = {}
     for x2 in x2_combos:
         for demos in demo_combos:
             label = f"x2={x2} | demos={demos}"
-            print(f"\nSolving ({N_STARTS} starts): {label}")
+            all_csv = OUT_DIR / 'multistart_all.csv'
+            base_seed = 0
+            if all_csv.exists():
+                existing_all = pd.read_csv(all_csv)
+                spec_rows = existing_all[
+                    (existing_all['spec'] == label) & existing_all['seed'].notna()
+                ]
+                if not spec_rows.empty:
+                    base_seed = int(spec_rows['seed'].max()) + 1
+            print(f"\nSolving ({N_STARTS} starts): {label}, base_seed={base_seed}")
             multistart_results[label] = run_multistart(
-                product_data, agent_data, x2, demos, n_starts=N_STARTS
+                product_data, agent_data, x2, demos, n_starts=N_STARTS, base_seed=base_seed,
             )
 
     detail = compare_multistart_results(multistart_results)
     print("\n=== All Starts ===")
     print(detail.to_string(index=False))
-    detail.to_csv(OUT_DIR / 'multistart_all.csv', index=False)
+    _append_csv(detail, OUT_DIR / 'multistart_all.csv', index=False)
     print("Saved: multistart_all.csv")
 
     print("\n=== Best per Specification ===")
     best = detail[detail['best']].drop(columns='best').set_index('spec')
     print(best.to_string())
-    best.to_csv(OUT_DIR / 'multistart_best.csv')
+    _append_csv(best, OUT_DIR / 'multistart_best.csv')
     print("Saved: multistart_best.csv")
 
     print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
     post = summarise_post_estimation(multistart_results, product_data, include_supply=False)
     print(post.to_string())
-    post.to_csv(OUT_DIR / 'post_estimation_summary.csv')
+    _append_csv(post, OUT_DIR / 'post_estimation_summary.csv')
     print("Saved: post_estimation_summary.csv")
+
+    print("\n=== Exporting Full Elasticity Matrices ===")
+    elast = export_elasticities(multistart_results, product_data)
+    _append_csv(elast, OUT_DIR / 'elasticities_detail.csv', index=False)
+    print("Saved: elasticities_detail.csv")
