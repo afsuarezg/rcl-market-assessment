@@ -331,18 +331,20 @@ def compare_multistart_results(
                 'objective':  float(sr.result.objective),
                 'best':       (i == 0),
             }
-            for k, v in enumerate(np.diag(sr.sigma_init)):
-                row[f'init_sigma_{k}'] = float(v)
+            sigma_labels = sr.result.sigma_labels
+            pi_labels    = sr.result.pi_labels
+            for lbl, v in zip(sigma_labels, np.diag(sr.sigma_init)):
+                row[f'init_sigma[{lbl}]'] = float(v)
             if sr.pi_init is not None:
-                for r in range(sr.pi_init.shape[0]):
-                    for c in range(sr.pi_init.shape[1]):
-                        row[f'init_pi_{r}_{c}'] = float(sr.pi_init[r, c])
-            for k, v in enumerate(np.diag(sr.result.sigma)):
-                row[f'est_sigma_{k}'] = float(v)
+                for r, rlbl in enumerate(sigma_labels):
+                    for c, clbl in enumerate(pi_labels):
+                        row[f'init_pi[{rlbl},{clbl}]'] = float(sr.pi_init[r, c])
+            for lbl, v in zip(sigma_labels, np.diag(sr.result.sigma)):
+                row[f'est_sigma[{lbl}]'] = float(v)
             if sr.result.pi is not None:
-                for r in range(sr.result.pi.shape[0]):
-                    for c in range(sr.result.pi.shape[1]):
-                        row[f'est_pi_{r}_{c}'] = float(sr.result.pi[r, c])
+                for r, rlbl in enumerate(sigma_labels):
+                    for c, clbl in enumerate(pi_labels):
+                        row[f'est_pi[{rlbl},{clbl}]'] = float(sr.result.pi[r, c])
             rows.append(row)
     return pd.DataFrame(rows)
 
