@@ -12,6 +12,7 @@ Run as a script to compare estimates across different characteristic specificati
 import pyblp
 import numpy as np
 import pandas as pd
+from itertools import combinations
 from pathlib import Path
 from typing import NamedTuple, Optional
 
@@ -511,6 +512,28 @@ def export_elasticities(
 # 10. Script entry point — grid over specifications
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _all_nonempty_subsets(items: list[str]) -> list[list[str]]:
+    return [list(s) for r in range(1, len(items) + 1) for s in combinations(items, r)]
+
+
+_BLP_X2_VARS   = ['hpwt', 'air', 'mpd', 'space']
+_BLP_DEMO_VARS = ['I(1 / income)']
+_X2_OPTIONS   = _all_nonempty_subsets(_BLP_X2_VARS)
+_DEMO_OPTIONS = _all_nonempty_subsets(_BLP_DEMO_VARS)
+
+
+def _prompt_combos(options: list[list[str]], label: str) -> list[list[str]]:
+    """Print numbered options and return the user-selected subset."""
+    print(f"\nAvailable {label} combinations:")
+    for i, opt in enumerate(options):
+        print(f"  [{i}] {opt}")
+    raw = input(f"Select {label} indices (comma-separated, or 'all'): ").strip()
+    if raw.lower() == 'all':
+        return list(options)
+    indices = [int(x.strip()) for x in raw.split(',')]
+    return [options[i] for i in indices]
+
+
 def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True) -> None:
     """Write df to path, appending below existing rows if the file exists."""
     if path.exists():
@@ -519,22 +542,24 @@ def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True) -> None:
     df.to_csv(path, index=index)
 
 
-if __name__ == '__main__':
+def main(
+    x2_combos: Optional[list[list[str]]] = None,
+    demo_combos: Optional[list[list[str]]] = None,
+    n_starts: Optional[int] = None,
+) -> None:
+    if x2_combos is None:
+        x2_combos = _prompt_combos(_X2_OPTIONS, 'x2')
+    if demo_combos is None:
+        demo_combos = _prompt_combos(_DEMO_OPTIONS, 'demo')
+    if n_starts is None:
+        n_starts = int(input("\nNumber of random starts per specification: ").strip())
+
     OUT_DIR = Path('results/blp')
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     product_data, agent_data = load_data()
 
-    N_STARTS = 2  # number of random restarts per specification
-
-    x2_combos = [
-        # ['hpwt', 'air', 'mpd', 'space'],  # full BLP (1995) spec
-        ['hpwt', 'air', 'mpd'],
-        # ['hpwt', 'air'],
-    ]
-    demo_combos = [
-        ['I(1 / income)'],  # only demographic available in BLP agent data
-    ]
+    N_STARTS = n_starts
 
     multistart_results = {}
     for x2 in x2_combos:
@@ -576,3 +601,7 @@ if __name__ == '__main__':
     elast = export_elasticities(multistart_results, product_data)
     _append_csv(elast, OUT_DIR / 'blp_elasticities_detail.csv', index=False)
     print("Saved: blp_elasticities_detail.csv")
+
+
+if __name__ == '__main__':
+    main()
