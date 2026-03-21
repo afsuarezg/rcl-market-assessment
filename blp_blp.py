@@ -469,6 +469,7 @@ def export_elasticities(
     # Sort to match PyBLP's internal product ordering (by market_ids ascending)
     product_data = product_data.sort_values('market_ids').reset_index(drop=True)
     markets = np.sort(product_data['market_ids'].unique())
+    id_col = 'product_ids' if 'product_ids' in product_data.columns else 'car_ids'
     for label, starts in multistart_results.items():
         for start in starts:
             res  = start.result
@@ -482,7 +483,7 @@ def export_elasticities(
             flat_idx = 0
             for market_id in markets:
                 mask = product_data['market_ids'] == market_id
-                product_ids = product_data.loc[mask, 'product_ids'].values
+                product_ids = product_data.loc[mask, id_col].values
                 J_t = len(product_ids)
                 # Stack J_t rows → J_t × J_t matrix
                 E_t = np.stack(list(elasticities[flat_idx:flat_idx + J_t]))
@@ -522,7 +523,7 @@ if __name__ == '__main__':
 
     product_data, agent_data = load_data()
 
-    N_STARTS = 1  # number of random restarts per specification
+    N_STARTS = 2  # number of random restarts per specification
 
     x2_combos = [
         # ['hpwt', 'air', 'mpd', 'space'],  # full BLP (1995) spec
