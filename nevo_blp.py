@@ -534,7 +534,7 @@ def main(
     if n_starts is None:
         n_starts = int(input("\nNumber of random starts per specification: ").strip())
 
-    OUT_DIR = Path('results/nevo')
+    OUT_DIR = Path('/oak/stanford/groups/polinsky/blp_nevo/results/nevo')
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     product_data, agent_data = load_data()
