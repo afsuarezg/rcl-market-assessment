@@ -18,7 +18,9 @@ Outputs analysis tables to stdout covering:
          9. Starting-value sensitivity for valid starts
 """
 
+import contextlib
 import csv
+import io
 import math
 from pathlib import Path
 
@@ -42,6 +44,9 @@ def _find(relative: str) -> Path:
 
 NEVO_CSV = _find('nevo/multistart_all.csv')
 BLP_CSV  = _find('blp/blp_multistart_all.csv')
+
+NEVO_ANALYSIS_DIR = NEVO_CSV.parent / 'analysis'
+BLP_ANALYSIS_DIR  = BLP_CSV.parent  / 'analysis'
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,6 +73,17 @@ def _header(title: str):
     _sep(char='=')
     print(f'  {title}')
     _sep(char='=')
+
+
+def _run_and_save(out_dir: Path, filename: str, func, *args):
+    """Call func(*args), tee output to stdout and save to out_dir/filename."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        func(*args)
+    text = buf.getvalue()
+    print(text, end='')
+    (out_dir / filename).write_text(text, encoding='utf-8')
 
 
 def _valid(row: dict) -> bool:
@@ -315,13 +331,17 @@ if __name__ == '__main__':
     print(f'\nLoaded Nevo: {len(nevo_rows)} rows from {NEVO_CSV}')
     print(f'Loaded BLP:  {len(blp_rows)} rows from {BLP_CSV}\n')
 
-    nevo_objective_ranking(nevo_rows)
-    nevo_demographic_expansion(nevo_rows)
-    nevo_x2_comparison(nevo_rows)
-    nevo_price_coef_sensitivity(nevo_rows)
-    nevo_multistart_stability(nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '01_objective_ranking.txt',      nevo_objective_ranking,       nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '02_demographic_expansion.txt',  nevo_demographic_expansion,   nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '03_x2_comparison.txt',          nevo_x2_comparison,           nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '04_price_coef_sensitivity.txt', nevo_price_coef_sensitivity,  nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '05_multistart_stability.txt',   nevo_multistart_stability,    nevo_rows)
 
-    blp_convergence_audit(blp_rows)
-    blp_global_minimum(blp_rows)
-    blp_two_basin_analysis(blp_rows)
-    blp_starting_value_sensitivity(blp_rows)
+    _run_and_save(BLP_ANALYSIS_DIR,  '06_convergence_audit.txt',         blp_convergence_audit,         blp_rows)
+    _run_and_save(BLP_ANALYSIS_DIR,  '07_global_minimum.txt',            blp_global_minimum,            blp_rows)
+    _run_and_save(BLP_ANALYSIS_DIR,  '08_two_basin_analysis.txt',        blp_two_basin_analysis,        blp_rows)
+    _run_and_save(BLP_ANALYSIS_DIR,  '09_starting_value_sensitivity.txt', blp_starting_value_sensitivity, blp_rows)
+
+    print(f'\nAnalysis saved to:')
+    print(f'  {NEVO_ANALYSIS_DIR}')
+    print(f'  {BLP_ANALYSIS_DIR}')

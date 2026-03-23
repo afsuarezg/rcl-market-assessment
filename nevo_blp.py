@@ -534,7 +534,10 @@ def main(
     if n_starts is None:
         n_starts = int(input("\nNumber of random starts per specification: ").strip())
 
-    OUT_DIR = Path('/oak/stanford/groups/polinsky/blp_nevo/results/nevo')
+    _OAK_ROOT    = Path('/oak/stanford/groups/polinsky/blp_nevo')
+    _LOCAL_ROOT  = Path(__file__).parent / 'results'
+    _RESULTS_ROOT = _OAK_ROOT / 'results' if _OAK_ROOT.exists() else _LOCAL_ROOT
+    OUT_DIR = _RESULTS_ROOT / 'nevo'
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     product_data, agent_data = load_data()
