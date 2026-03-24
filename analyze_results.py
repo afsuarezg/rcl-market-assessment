@@ -3,19 +3,27 @@ analyze_results.py -- post-hoc analysis of multistart estimation results.
 
 Reads:
   results/nevo/multistart_all.csv
+  results/nevo/elasticities_detail.csv
   results/blp/blp_multistart_all.csv
+  results/blp/blp_elasticities_detail.csv
   (also checks /oak/stanford/groups/polinsky/blp_nevo/... if local files absent)
 
 Outputs analysis tables to stdout covering:
-  [Both]  1. Objective ranking across specs
-          4. Price coefficient sensitivity
-          5. Multi-start convergence stability
-          6. Convergence audit (valid vs invalid starts)
-          7. Global minimum identification
-          8. Two-basin analysis
-          9. Starting-value sensitivity for valid starts
-  [Nevo]  2. Demographic expansion effect (fixed X2)
-          3. X2 characteristic comparison (fixed demographics)
+  [Both]  01. Objective ranking across specs
+          04. Price coefficient sensitivity
+          05. Multi-start convergence stability
+          06. Convergence audit (valid vs invalid starts)
+          07. Global minimum identification
+          08. Two-basin analysis
+          09. Starting-value sensitivity for valid starts
+          10. Own-price elasticity summary by spec (ranked by objective)
+          11. Elasticity stability across multi-start seeds
+          12. Top substitutes per product (best spec)
+          13. Cross-price elasticity asymmetry (best spec)
+  [Nevo]  02. Demographic expansion effect (fixed X2)
+          03. X2 characteristic comparison (fixed demographics)
+          14. Cross-spec Spearman rank correlation of own-price elasticities
+          15. Within-firm vs between-firm substitution patterns
 """
 
 import contextlib
@@ -42,8 +50,10 @@ def _find(relative: str) -> Path:
         f"Cannot find {relative!r} in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
     )
 
-NEVO_CSV = _find('nevo/multistart_all.csv')
-BLP_CSV  = _find('blp/blp_multistart_all.csv')
+NEVO_CSV      = _find('nevo/multistart_all.csv')
+BLP_CSV       = _find('blp/blp_multistart_all.csv')
+NEVO_ELAS_CSV = _find('nevo/elasticities_detail.csv')
+BLP_ELAS_CSV  = _find('blp/blp_elasticities_detail.csv')
 
 NEVO_ANALYSIS_DIR = NEVO_CSV.parent / 'analysis'
 BLP_ANALYSIS_DIR  = BLP_CSV.parent  / 'analysis'
@@ -107,6 +117,51 @@ def _best_per_spec(rows: list[dict]) -> list[dict]:
         best = min(pool, key=lambda r: float(r['objective']))
         result.append(best)
     return sorted(result, key=lambda r: float(r['objective']))
+
+
+def _best_seed_map(all_rows: list[dict]) -> dict[str, str]:
+    """Return {spec: seed} for the best valid start per spec."""
+    return {r['spec']: r['seed'] for r in _best_per_spec(all_rows)}
+
+
+def _stats(vals: list[float]) -> dict:
+    """Return mean, median, std, min, max for a list of floats."""
+    n = len(vals)
+    if n == 0:
+        return dict(mean=float('nan'), median=float('nan'), std=0.0,
+                    mn=float('nan'), mx=float('nan'))
+    mean = sum(vals) / n
+    sorted_v = sorted(vals)
+    mid = n // 2
+    median = sorted_v[mid] if n % 2 else (sorted_v[mid - 1] + sorted_v[mid]) / 2
+    std = math.sqrt(sum((v - mean) ** 2 for v in vals) / n)
+    return dict(mean=mean, median=median, std=std, mn=sorted_v[0], mx=sorted_v[-1])
+
+
+def _rank(vals: list[float]) -> list[int]:
+    """Assign integer ranks (1 = smallest) to a list of values."""
+    order = sorted(range(len(vals)), key=lambda i: vals[i])
+    ranks = [0] * len(vals)
+    for rank, i in enumerate(order, 1):
+        ranks[i] = rank
+    return ranks
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float:
+    """Pearson correlation coefficient."""
+    n = len(xs)
+    if n < 2:
+        return float('nan')
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    num   = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    denom = math.sqrt(sum((x - mx) ** 2 for x in xs) * sum((y - my) ** 2 for y in ys))
+    return num / denom if denom else float('nan')
+
+
+def _spearman(xs: list[float], ys: list[float]) -> float:
+    """Spearman rank correlation (rank-transform then Pearson)."""
+    return _pearson([float(r) for r in _rank(xs)], [float(r) for r in _rank(ys)])
 
 # ---------------------------------------------------------------------------
 # Generic analyses (apply to both Nevo and BLP)
@@ -259,7 +314,185 @@ def starting_value_sensitivity(rows: list[dict], label: str = ''):
     print()
 
 # ---------------------------------------------------------------------------
-# Nevo-specific analyses (hardcoded spec labels)
+# Elasticity analyses (generic — apply to both Nevo and BLP)
+# ---------------------------------------------------------------------------
+
+def elasticity_own_summary(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
+    """Analysis 10: own-price elasticity summary per spec, ranked by objective."""
+    _header(f'{label} -- Own-price elasticity summary by specification (ranked by objective)')
+
+    best_list = _best_per_spec(all_rows)
+    seed_map  = {r['spec']: r['seed'] for r in best_list}
+    obj_map   = {r['spec']: float(r['objective']) for r in best_list}
+
+    # Collect own-price elasticities per spec/seed
+    own_by_spec: dict[str, list[float]] = {}
+    for r in elas_rows:
+        if r['own_price'] == 'True' and seed_map.get(r['spec']) == r['seed']:
+            own_by_spec.setdefault(r['spec'], []).append(float(r['elasticity']))
+
+    print(f'  {"Rank":>4}  {"GMM obj":>10}  {"mean_own":>10}  {"median":>8}'
+          f'  {"std":>8}  {"min":>10}  {"max":>10}  Specification')
+    _sep()
+    for rank, best_row in enumerate(best_list, 1):
+        spec = best_row['spec']
+        vals = own_by_spec.get(spec, [])
+        if not vals:
+            continue
+        s = _stats(vals)
+        print(f'  {rank:>4}  {obj_map[spec]:>10.4f}  {s["mean"]:>10.4f}  {s["median"]:>8.4f}'
+              f'  {s["std"]:>8.4f}  {s["mn"]:>10.4f}  {s["mx"]:>10.4f}  {spec}')
+    print()
+
+
+def elasticity_multistart_stability(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
+    """Analysis 11: per-product own-price elasticity spread across seeds."""
+    _header(f'{label} -- Own-price elasticity stability across multi-start seeds')
+
+    # Find specs that have more than one seed in elas_rows
+    seeds_per_spec: dict[str, set] = {}
+    for r in elas_rows:
+        if r['own_price'] == 'True':
+            seeds_per_spec.setdefault(r['spec'], set()).add(r['seed'])
+
+    multi_specs = {spec for spec, seeds in seeds_per_spec.items() if len(seeds) > 1}
+
+    if not multi_specs:
+        print('  No specifications with multiple seeds found in elasticities data.')
+        print()
+        return
+
+    # For each multi-seed spec, per product collect elasticity per seed
+    for spec in sorted(multi_specs):
+        seeds = sorted(seeds_per_spec[spec])
+        print(f'  Spec: {spec}  ({len(seeds)} seeds: {seeds})')
+        print(f'    {"Product":<12}  {"mean_own":>10}  {"spread":>8}  {"min":>10}  {"max":>10}')
+        _sep(60)
+
+        # {product: {seed: elasticity}}
+        prod_seed: dict[str, dict[str, float]] = {}
+        for r in elas_rows:
+            if r['spec'] == spec and r['own_price'] == 'True':
+                prod_seed.setdefault(r['product_j'], {})[r['seed']] = float(r['elasticity'])
+
+        for product in sorted(prod_seed):
+            vals = list(prod_seed[product].values())
+            if len(vals) < 2:
+                continue
+            mean   = sum(vals) / len(vals)
+            spread = max(vals) - min(vals)
+            print(f'    {product:<12}  {mean:>10.4f}  {spread:>8.6f}  {min(vals):>10.4f}  {max(vals):>10.4f}')
+        print()
+
+
+def elasticity_top_substitutes(elas_rows: list[dict], all_rows: list[dict],
+                                label: str = '', top_k: int = 5):
+    """Analysis 12: top-k substitute products by cross-price elasticity (best spec)."""
+    _header(f'{label} -- Top-{top_k} substitutes per product (best spec by objective)')
+
+    best_list = _best_per_spec(all_rows)
+    if not best_list:
+        print('  No valid specs found.')
+        return
+
+    best_spec = best_list[0]
+    spec      = best_spec['spec']
+    seed      = best_spec['seed']
+    obj       = float(best_spec['objective'])
+    print(f'  Best spec (rank 1): {spec}')
+    print(f'  Seed: {seed}  GMM obj: {obj:.4f}')
+    print()
+
+    # Collect own and cross elasticities for this spec+seed
+    own_elas: dict[str, float]         = {}
+    cross_elas: dict[str, list[tuple]] = {}
+    for r in elas_rows:
+        if r['spec'] != spec or r['seed'] != seed:
+            continue
+        e = float(r['elasticity'])
+        if r['own_price'] == 'True':
+            own_elas[r['product_j']] = e
+        else:
+            cross_elas.setdefault(r['product_j'], []).append((r['product_k'], e))
+
+    # For BLP (large product set) limit to the 10 most elastic products
+    all_products = sorted(own_elas, key=lambda p: own_elas[p])
+    MAX_PRODUCTS = 10 if len(all_products) > 50 else len(all_products)
+    display_products = all_products[:MAX_PRODUCTS]
+
+    if len(all_products) > 50:
+        print(f'  ({len(all_products)} products total — showing {MAX_PRODUCTS} most price-elastic)')
+        print()
+
+    print(f'  {"Product j":<14}  {"own_elas":>10}  Top-{top_k} substitutes (product_k: e_jk)')
+    _sep()
+    for pj in display_products:
+        subs = sorted(cross_elas.get(pj, []), key=lambda x: x[1], reverse=True)[:top_k]
+        sub_str = '  '.join(f'{pk}:{e:+.4f}' for pk, e in subs)
+        print(f'  {pj:<14}  {own_elas[pj]:>10.4f}  {sub_str}')
+    print()
+
+
+def elasticity_asymmetry(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
+    """Analysis 13: distribution of |e_jk - e_kj| for the best spec."""
+    _header(f'{label} -- Cross-price elasticity asymmetry |e_jk - e_kj| (best spec)')
+
+    best_list = _best_per_spec(all_rows)
+    if not best_list:
+        print('  No valid specs found.')
+        return
+
+    best_spec = best_list[0]
+    spec      = best_spec['spec']
+    seed      = best_spec['seed']
+    print(f'  Best spec (rank 1): {spec}')
+    print(f'  Seed: {seed}  GMM obj: {float(best_spec["objective"]):.4f}')
+    print()
+
+    # Build lookup: (j, k) -> elasticity for cross-price pairs
+    elas_dict: dict[tuple, float] = {}
+    for r in elas_rows:
+        if r['spec'] == spec and r['seed'] == seed and r['own_price'] == 'False':
+            elas_dict[(r['product_j'], r['product_k'])] = float(r['elasticity'])
+
+    # Compute asymmetry for all unordered pairs where both directions exist
+    diffs = []
+    seen  = set()
+    for (j, k), ejk in elas_dict.items():
+        if (k, j) in seen:
+            continue
+        ekj = elas_dict.get((k, j))
+        if ekj is not None:
+            diffs.append((j, k, ejk, ekj, abs(ejk - ekj)))
+            seen.add((j, k))
+
+    if not diffs:
+        print('  No symmetric pairs found.')
+        print()
+        return
+
+    asym_vals = [d[4] for d in diffs]
+    s = _stats(asym_vals)
+    threshold = 0.1
+    n_above   = sum(1 for v in asym_vals if v > threshold)
+
+    print(f'  Total symmetric pairs: {len(diffs)}')
+    print(f'  Mean  |e_jk - e_kj|:  {s["mean"]:.4f}')
+    print(f'  Median:                {s["median"]:.4f}')
+    print(f'  Max:                   {s["mx"]:.4f}')
+    print(f'  Pairs with |diff| > {threshold}: {n_above} / {len(diffs)} ({100 * n_above / len(diffs):.1f}%)')
+    print()
+
+    top10 = sorted(diffs, key=lambda x: x[4], reverse=True)[:10]
+    print(f'  Top-10 most asymmetric pairs:')
+    print(f'    {"j":<14}  {"k":<14}  {"e_jk":>10}  {"e_kj":>10}  {"|diff|":>10}')
+    _sep(70)
+    for j, k, ejk, ekj, diff in top10:
+        print(f'    {j:<14}  {k:<14}  {ejk:>10.4f}  {ekj:>10.4f}  {diff:>10.4f}')
+    print()
+
+# ---------------------------------------------------------------------------
+# Nevo-specific analyses (hardcoded spec labels or firm encoding)
 # ---------------------------------------------------------------------------
 
 def nevo_demographic_expansion(rows: list[dict]):
@@ -320,37 +553,178 @@ def nevo_x2_comparison(rows: list[dict]):
         print(f'  {x2_label:>20}  {float(r["objective"]):>10.4f}  {float(r["price_coef"]):>12.4f}')
     print()
 
+
+def nevo_elasticity_cross_spec_correlation(elas_rows: list[dict], all_rows: list[dict]):
+    """Analysis 14: Spearman rank correlation of own-price elasticities across specs."""
+    _header('NEVO -- Cross-spec Spearman rank correlation of own-price elasticities')
+
+    seed_map  = _best_seed_map(all_rows)
+    best_list = _best_per_spec(all_rows)
+    specs     = [r['spec'] for r in best_list]
+
+    # {spec: {product: own_elasticity}} for best seed per spec
+    spec_prod_elas: dict[str, dict[str, float]] = {s: {} for s in specs}
+    for r in elas_rows:
+        if r['own_price'] == 'True' and seed_map.get(r['spec']) == r['seed']:
+            spec_prod_elas[r['spec']][r['product_j']] = float(r['elasticity'])
+
+    # Products common to all specs
+    common = set.intersection(*[set(d) for d in spec_prod_elas.values()])
+    common_sorted = sorted(common)
+    if not common_sorted:
+        print('  No products common to all specifications.')
+        print()
+        return
+
+    print(f'  Products in common: {len(common_sorted)}')
+    print()
+
+    # Short spec labels for table header
+    short = [s.replace("x2=", "").replace("demos=", "").replace(" | ", "|") for s in specs]
+    col_w = max(len(s) for s in short) + 2
+
+    # Header row
+    header_pad = ' ' * (col_w + 2)
+    print(header_pad + ''.join(f'{s:>{col_w}}' for s in short))
+    _sep(col_w * (len(specs) + 1) + 2)
+
+    for i, si in enumerate(specs):
+        vi = [spec_prod_elas[si][p] for p in common_sorted]
+        row_str = f'  {short[i]:<{col_w}}'
+        for j, sj in enumerate(specs):
+            vj = [spec_prod_elas[sj][p] for p in common_sorted]
+            corr = _spearman(vi, vj)
+            row_str += f'{corr:>{col_w}.3f}'
+        print(row_str)
+    print()
+
+    # Also print the pairwise table sorted by correlation (excluding self-pairs)
+    pairs = []
+    for i, si in enumerate(specs):
+        vi = [spec_prod_elas[si][p] for p in common_sorted]
+        for j, sj in enumerate(specs):
+            if j <= i:
+                continue
+            vj = [spec_prod_elas[sj][p] for p in common_sorted]
+            pairs.append((si, sj, _spearman(vi, vj)))
+
+    pairs.sort(key=lambda x: x[2], reverse=True)
+    print(f'  Pairwise correlations (sorted):')
+    print(f'  {"Corr":>6}  Spec A vs Spec B')
+    _sep(80)
+    for sa, sb, corr in pairs:
+        print(f'  {corr:>6.3f}  {sa}  vs  {sb}')
+    print()
+
+
+def nevo_elasticity_firm_substitution(elas_rows: list[dict], all_rows: list[dict]):
+    """Analysis 15: within-firm vs between-firm cross-price elasticities."""
+    _header('NEVO -- Within-firm vs between-firm substitution patterns')
+
+    def _firm(product_id: str) -> str:
+        """Parse firm from product ID: F1B04 -> F1."""
+        b_pos = product_id.index('B')
+        return product_id[:b_pos]
+
+    best_list = _best_per_spec(all_rows)
+    seed_map  = {r['spec']: r['seed'] for r in best_list}
+    obj_map   = {r['spec']: float(r['objective']) for r in best_list}
+
+    print(f'  {"Rank":>4}  {"GMM obj":>10}  {"mean_within":>12}  {"mean_between":>13}  {"ratio":>7}  Specification')
+    _sep()
+
+    for rank, best_row in enumerate(best_list, 1):
+        spec = best_row['spec']
+        seed = seed_map[spec]
+        within, between = [], []
+        for r in elas_rows:
+            if r['spec'] != spec or r['seed'] != seed or r['own_price'] == 'True':
+                continue
+            fj = _firm(r['product_j'])
+            fk = _firm(r['product_k'])
+            e  = float(r['elasticity'])
+            if fj == fk:
+                within.append(e)
+            else:
+                between.append(e)
+        mw = sum(within)  / len(within)  if within  else float('nan')
+        mb = sum(between) / len(between) if between else float('nan')
+        ratio = mw / mb if mb and mb != 0 else float('nan')
+        print(f'  {rank:>4}  {obj_map[spec]:>10.4f}  {mw:>12.4f}  {mb:>13.4f}  {ratio:>7.3f}  {spec}')
+    print()
+
+    # Firm × firm mean cross-elasticity matrix for the best spec
+    best_spec = best_list[0]['spec']
+    best_seed = seed_map[best_spec]
+    print(f'  Firm x firm mean cross-price elasticity matrix (best spec):')
+    print(f'  {best_spec}')
+    print()
+
+    firm_pair_elas: dict[tuple, list[float]] = {}
+    for r in elas_rows:
+        if r['spec'] != best_spec or r['seed'] != best_seed or r['own_price'] == 'True':
+            continue
+        key = (_firm(r['product_j']), _firm(r['product_k']))
+        firm_pair_elas.setdefault(key, []).append(float(r['elasticity']))
+
+    firms = sorted(set(f for (fj, fk) in firm_pair_elas for f in (fj, fk)))
+    col_w = 10
+    print('  ' + ' ' * 6 + ''.join(f'{f:>{col_w}}' for f in firms))
+    _sep(6 + col_w * len(firms) + 2)
+    for fj in firms:
+        row_str = f'  {fj:<6}'
+        for fk in firms:
+            vals = firm_pair_elas.get((fj, fk), [])
+            mean = sum(vals) / len(vals) if vals else float('nan')
+            row_str += f'{mean:>{col_w}.4f}'
+        print(row_str)
+    print()
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main():
 
-    nevo_rows = _load(NEVO_CSV)
-    blp_rows  = _load(BLP_CSV)
+    nevo_rows     = _load(NEVO_CSV)
+    blp_rows      = _load(BLP_CSV)
+    nevo_elas_rows = _load(NEVO_ELAS_CSV)
+    blp_elas_rows  = _load(BLP_ELAS_CSV)
 
-    print(f'\nLoaded Nevo: {len(nevo_rows)} rows from {NEVO_CSV}')
-    print(f'Loaded BLP:  {len(blp_rows)} rows from {BLP_CSV}\n')
+    print(f'\nLoaded Nevo multistart: {len(nevo_rows)} rows from {NEVO_CSV}')
+    print(f'Loaded BLP  multistart: {len(blp_rows)} rows from {BLP_CSV}')
+    print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {NEVO_ELAS_CSV}')
+    print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {BLP_ELAS_CSV}\n')
 
     # --- Nevo analyses ---
-    _run_and_save(NEVO_ANALYSIS_DIR, '01_objective_ranking.txt',          objective_ranking,            nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '02_demographic_expansion.txt',      nevo_demographic_expansion,   nevo_rows)
-    _run_and_save(NEVO_ANALYSIS_DIR, '03_x2_comparison.txt',              nevo_x2_comparison,           nevo_rows)
-    _run_and_save(NEVO_ANALYSIS_DIR, '04_price_coef_sensitivity.txt',     price_coef_sensitivity,       nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '05_multistart_stability.txt',       multistart_stability,         nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '06_convergence_audit.txt',          convergence_audit,            nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '07_global_minimum.txt',             global_minimum,               nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '08_two_basin_analysis.txt',         two_basin_analysis,           nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '09_starting_value_sensitivity.txt', starting_value_sensitivity,   nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '01_objective_ranking.txt',              objective_ranking,                    nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '02_demographic_expansion.txt',          nevo_demographic_expansion,           nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '03_x2_comparison.txt',                  nevo_x2_comparison,                   nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '05_multistart_stability.txt',           multistart_stability,                 nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '06_convergence_audit.txt',              convergence_audit,                    nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '07_global_minimum.txt',                 global_minimum,                       nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '08_two_basin_analysis.txt',             two_basin_analysis,                   nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '10_elasticity_own_summary.txt',         elasticity_own_summary,               nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '14_elasticity_cross_spec_correlation.txt', nevo_elasticity_cross_spec_correlation, nevo_elas_rows, nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '15_elasticity_firm_substitution.txt',   nevo_elasticity_firm_substitution,    nevo_elas_rows, nevo_rows)
 
     # --- BLP analyses ---
-    _run_and_save(BLP_ANALYSIS_DIR,  '01_objective_ranking.txt',          objective_ranking,            blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '04_price_coef_sensitivity.txt',     price_coef_sensitivity,       blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '05_multistart_stability.txt',       multistart_stability,         blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '06_convergence_audit.txt',          convergence_audit,            blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '07_global_minimum.txt',             global_minimum,               blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '08_two_basin_analysis.txt',         two_basin_analysis,           blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '09_starting_value_sensitivity.txt', starting_value_sensitivity,   blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '05_multistart_stability.txt',           multistart_stability,                 blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '06_convergence_audit.txt',              convergence_audit,                    blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '07_global_minimum.txt',                 global_minimum,                       blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '08_two_basin_analysis.txt',             two_basin_analysis,                   blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '10_elasticity_own_summary.txt',         elasticity_own_summary,               blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 blp_elas_rows, blp_rows, 'BLP')
 
     print(f'\nAnalysis saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')
