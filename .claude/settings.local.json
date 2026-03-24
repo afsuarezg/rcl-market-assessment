@@ -9,7 +9,8 @@
       "Bash(.venv/Scripts/python nevo_blp.py)",
       "Bash(ls:*)",
       "Bash(find /c/Users/Andres.DESKTOP-D77KM25/Documents/rcl_market_assessment/.venv/Lib/site-packages/pyblp -type f -name *.py)",
-      "Bash(find results:*)"
+      "Bash(find results:*)",
+      "Bash(.venv/Scripts/python analyze_results.py)"
     ]
   }
 }
