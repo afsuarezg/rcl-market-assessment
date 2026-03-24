@@ -324,7 +324,8 @@ def blp_starting_value_sensitivity(rows: list[dict]):
 # Main
 # ---------------------------------------------------------------------------
 
-if __name__ == '__main__':
+def main():
+
     nevo_rows = _load(NEVO_CSV)
     blp_rows  = _load(BLP_CSV)
 
@@ -345,3 +346,9 @@ if __name__ == '__main__':
     print(f'\nAnalysis saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')
     print(f'  {BLP_ANALYSIS_DIR}')
+
+
+if __name__ == '__main__':
+    main()
+
+
