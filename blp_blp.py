@@ -99,7 +99,37 @@ _BLP_X2    = ['hpwt', 'air', 'mpd', 'space']
 _BLP_DEMOS = ['I(1 / income)']
 _BLP_SIGMA   = np.diag([3.612, 0, 4.628, 1.818, 1.050, 2.056])
 _BLP_PI      = np.array([[0], [-43.501], [0], [0], [0], [0]], dtype=float)
-_BLP_PI_MASK = (_BLP_PI != 0)     # True where pi is estimated (zeros fix params at zero)
+
+
+def _random_pi_init(
+    K2: int,
+    n_demo: int,
+    n_instruments: Optional[int],
+    rng: 'np.random.Generator',
+) -> np.ndarray:
+    """
+    Draw a pi_init matrix with randomly chosen sparsity.
+
+    K2 nonzero sigma entries are assumed fixed; the remaining budget
+    (n_instruments - K2) determines how many pi entries can be nonzero.
+    Positions are chosen uniformly at random; values from standard_normal.
+    If n_instruments is None all entries are activated.
+    """
+    n_total = K2 * n_demo
+    if n_instruments is not None:
+        max_nonzero = n_instruments - K2
+        if max_nonzero <= 0:
+            raise ValueError(
+                f"Specification requires at least {K2} instruments for sigma "
+                f"but only {n_instruments} excluded instruments are available."
+            )
+        n_active = min(max_nonzero, n_total)
+    else:
+        n_active = n_total
+    indices = rng.choice(n_total, size=n_active, replace=False)
+    pi = np.zeros((K2, n_demo))
+    pi.flat[indices] = rng.standard_normal(n_active)
+    return pi
 
 
 def build_initial_params(
@@ -129,15 +159,13 @@ def build_initial_params(
     force_random
         Skip the BLP-baseline detection and always draw random values.
     """
-    # For the exact baseline specification use published sigma; randomise pi with seed.
-    if not force_random and x2_vars == _BLP_X2 and demo_vars == _BLP_DEMOS:
-        rng = np.random.default_rng(seed)
-        pi = np.zeros_like(_BLP_PI)
-        pi[_BLP_PI_MASK] = rng.standard_normal(_BLP_PI_MASK.sum())
-        return _BLP_SIGMA.copy(), pi
-
     K2 = 2 + len(x2_vars)
     rng = np.random.default_rng(seed)
+
+    # For the exact baseline specification use published sigma; randomise pi with seed.
+    if not force_random and x2_vars == _BLP_X2 and demo_vars == _BLP_DEMOS:
+        return _BLP_SIGMA.copy(), _random_pi_init(K2, len(demo_vars), n_instruments, rng)
+
     sigma_init = np.diag(rng.uniform(0, 1, K2))
     if demo_vars is not None:
         # Price heterogeneity is captured via pi (price × demographics);
@@ -147,22 +175,7 @@ def build_initial_params(
     if demo_vars is None:
         return sigma_init, None
 
-    pi_init = rng.standard_normal((K2, len(demo_vars)))
-
-    if n_instruments is not None:
-        n_nonzero = K2 + K2 * len(demo_vars)
-        if n_nonzero > n_instruments:
-            max_pi_nonzero = n_instruments - K2
-            if max_pi_nonzero <= 0:
-                raise ValueError(
-                    f"Specification requires at least {K2} instruments for sigma "
-                    f"but only {n_instruments} excluded instruments are available."
-                )
-            flat = pi_init.flatten()
-            flat[max_pi_nonzero:] = 0.0
-            pi_init = flat.reshape(K2, len(demo_vars))
-
-    return sigma_init, pi_init
+    return sigma_init, _random_pi_init(K2, len(demo_vars), n_instruments, rng)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
