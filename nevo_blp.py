@@ -264,7 +264,25 @@ def run_multistart(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 7. Comparison helpers
+# 7. Optimal instruments
+# ─────────────────────────────────────────────────────────────────────────────
+
+def apply_optimal_instruments(
+    sr: StartResult,
+    gtol: float = 1e-5,
+    method: str = '1s',
+) -> StartResult:
+    """Re-solve from sr using approximate optimal instruments."""
+    instrument_results = sr.result.compute_optimal_instruments(method='approximate')
+    updated_problem = instrument_results.to_problem()
+    updated_result = solve_spec(updated_problem, sr.result.sigma, sr.result.pi,
+                                gtol=gtol, method=method)
+    return StartResult(result=updated_result, sigma_init=sr.result.sigma,
+                       pi_init=sr.result.pi, seed=sr.seed)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Comparison helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def compare_results(results_dict: dict[str, pyblp.ProblemResults]) -> pd.DataFrame:
@@ -333,7 +351,7 @@ def compare_multistart_results(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. Post-estimation summary
+# 10. Post-estimation summary
 # ─────────────────────────────────────────────────────────────────────────────
 
 def summarise_post_estimation(
@@ -432,7 +450,7 @@ def summarise_post_estimation(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 9. Elasticity export
+# 11. Elasticity export
 # ─────────────────────────────────────────────────────────────────────────────
 
 def export_elasticities(
@@ -489,7 +507,7 @@ def export_elasticities(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 10. Script entry point — grid over specifications
+# 12. Script entry point — grid over specifications
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _all_nonempty_subsets(items: list[str]) -> list[list[str]]:
@@ -562,7 +580,12 @@ def main(
                 product_data, agent_data, x2, demos, n_starts=N_STARTS, base_seed=base_seed,
             )
 
-    detail = compare_multistart_results(multistart_results)
+    optimal_results: dict[str, list[StartResult]] = {}
+    for label, starts in multistart_results.items():
+        print(f"\nApplying optimal instruments: {label}")
+        optimal_results[label] = [apply_optimal_instruments(starts[0])]
+
+    detail = compare_multistart_results(optimal_results)
     print("\n=== All Starts ===")
     print(detail.to_string(index=False))
     _append_csv(detail, OUT_DIR / 'multistart_all.csv', index=False)
@@ -575,13 +598,13 @@ def main(
     print("Saved: multistart_best.csv")
 
     print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
-    post = summarise_post_estimation(multistart_results, product_data, include_supply=False)
+    post = summarise_post_estimation(optimal_results, product_data, include_supply=False)
     print(post.to_string())
     _append_csv(post, OUT_DIR / 'post_estimation_summary.csv')
     print("Saved: post_estimation_summary.csv")
 
     print("\n=== Exporting Full Elasticity Matrices ===")
-    elast = export_elasticities(multistart_results, product_data)
+    elast = export_elasticities(optimal_results, product_data)
     _append_csv(elast, OUT_DIR / 'elasticities_detail.csv', index=False)
     print("Saved: elasticities_detail.csv")
 
