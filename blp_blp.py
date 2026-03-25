@@ -97,8 +97,9 @@ def build_problem(
 
 _BLP_X2    = ['hpwt', 'air', 'mpd', 'space']
 _BLP_DEMOS = ['I(1 / income)']
-_BLP_SIGMA = np.diag([3.612, 0, 4.628, 1.818, 1.050, 2.056])
-_BLP_PI    = np.array([[0], [-43.501], [0], [0], [0], [0]], dtype=float)
+_BLP_SIGMA   = np.diag([3.612, 0, 4.628, 1.818, 1.050, 2.056])
+_BLP_PI      = np.array([[0], [-43.501], [0], [0], [0], [0]], dtype=float)
+_BLP_PI_MASK = (_BLP_PI != 0)     # True where pi is estimated (zeros fix params at zero)
 
 
 def build_initial_params(
@@ -128,8 +129,12 @@ def build_initial_params(
     force_random
         Skip the BLP-baseline detection and always draw random values.
     """
+    # For the exact baseline specification use published sigma; randomise pi with seed.
     if not force_random and x2_vars == _BLP_X2 and demo_vars == _BLP_DEMOS:
-        return _BLP_SIGMA.copy(), _BLP_PI.copy()
+        rng = np.random.default_rng(seed)
+        pi = np.zeros_like(_BLP_PI)
+        pi[_BLP_PI_MASK] = rng.standard_normal(_BLP_PI_MASK.sum())
+        return _BLP_SIGMA.copy(), pi
 
     K2 = 2 + len(x2_vars)
     rng = np.random.default_rng(seed)

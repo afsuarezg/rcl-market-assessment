@@ -98,13 +98,14 @@ def build_problem(
 
 _NEVO_X2    = ['sugar', 'mushy']
 _NEVO_DEMOS = ['income', 'income_squared', 'age', 'child']
-_NEVO_SIGMA = np.diag([0.3302, 2.4526, 0.0163, 0.2441])
-_NEVO_PI    = np.array([
+_NEVO_SIGMA   = np.diag([0.3302, 2.4526, 0.0163, 0.2441])
+_NEVO_PI      = np.array([
     [ 5.4819,  0,       0.2037,  0     ],
     [15.8935, -1.2000,  0,       2.6342],
     [-0.2506,  0,       0.0511,  0     ],
     [ 1.2650,  0,      -0.8091,  0     ],
 ])
+_NEVO_PI_MASK = (_NEVO_PI != 0)   # True where pi is estimated (zeros fix params at zero)
 
 
 def build_initial_params(
@@ -136,9 +137,12 @@ def build_initial_params(
         If True, skip the Nevo-baseline detection and always draw random values.
         Useful for multistart optimization where subsequent starts need fresh draws.
     """
-    # Use Nevo's published starting values for the exact baseline specification
+    # For the exact baseline specification use published sigma; randomise pi with seed.
     if not force_random and x2_vars == _NEVO_X2 and demo_vars == _NEVO_DEMOS:
-        return _NEVO_SIGMA.copy(), _NEVO_PI.copy()
+        rng = np.random.default_rng(seed)
+        pi = np.zeros_like(_NEVO_PI)
+        pi[_NEVO_PI_MASK] = rng.standard_normal(_NEVO_PI_MASK.sum())
+        return _NEVO_SIGMA.copy(), pi
 
     K2 = 2 + len(x2_vars)
     rng = np.random.default_rng(seed)
@@ -610,4 +614,6 @@ def main(
 
 
 if __name__ == '__main__':
-    main()
+    main(x2_combos=[['sugar']], 
+    demo_combos=[['income', 'age']],
+    n_starts=12)
