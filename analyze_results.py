@@ -210,13 +210,13 @@ def multistart_stability(rows: list[dict], label: str = ''):
 
 def convergence_audit(rows: list[dict], label: str = ''):
     _header(f'{label} -- Convergence audit (valid = price_coef < 0)')
-    print(f'  {"Seed":>6}  {"Start":>6}  {"GMM obj":>10}  {"price_coef":>12}  {"Valid?":>7}  {"Best flag":>9}')
+    print(f'  {"Spec":<40}  {"Seed":>6}  {"Start":>6}  {"GMM obj":>10}  {"price_coef":>12}  {"Valid?":>7}  {"Best flag":>9}')
     _sep()
     for r in rows:
         valid = _valid(r)
         marker = '  OK' if valid else '  ** INVALID (alpha > 0) **'
         print(
-            f'  {r["seed"]:>6}  {r["start"]:>6}  {float(r["objective"]):>10.4f}'
+            f'  {r["spec"]:<40}  {r["seed"]:>6}  {r["start"]:>6}  {float(r["objective"]):>10.4f}'
             f'  {float(r["price_coef"]):>12.4f}  {str(valid):>7}  {r["best"]:>9}{marker}'
         )
     valid_rows = [r for r in rows if _valid(r)]
