@@ -236,14 +236,14 @@ def global_minimum(rows: list[dict], label: str = ''):
 
     valid_sorted = sorted(valid, key=lambda r: float(r['objective']))
     best = valid_sorted[0]
-    print(f'  Global best: seed={best["seed"]}  obj={float(best["objective"]):.4f}'
+    print(f'  Global best: spec={best["spec"]}  seed={best["seed"]}  obj={float(best["objective"]):.4f}'
           f'  price_coef={float(best["price_coef"]):.4f}')
     print()
-    print(f'  {"Rank":>4}  {"Seed":>6}  {"GMM obj":>10}  {"price_coef":>12}  {"d_from_best":>12}')
+    print(f'  {"Rank":>4}  {"Spec":<30}  {"Seed":>6}  {"GMM obj":>10}  {"price_coef":>12}  {"d_from_best":>12}')
     _sep()
     for i, r in enumerate(valid_sorted, 1):
         delta = float(r['objective']) - float(best['objective'])
-        print(f'  {i:>4}  {r["seed"]:>6}  {float(r["objective"]):>10.4f}'
+        print(f'  {i:>4}  {r["spec"]:<30}  {r["seed"]:>6}  {float(r["objective"]):>10.4f}'
               f'  {float(r["price_coef"]):>12.4f}  {delta:>12.4f}')
     print()
 
