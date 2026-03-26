@@ -1053,6 +1053,105 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
     _savefig(fig, out_dir, '20_elasticity_pair_across_sims.png')
 
 
+def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: list[dict],
+                                               label: str, out_dir: Path):
+    """Analysis 21 — 2×2 panel: 4 elasticities for one pair, one best-simulation per spec."""
+    # Step 1: best seed per spec (sorted by objective)
+    best_list = _best_per_spec(all_rows)
+    if not best_list:
+        print(f'  [{label}] No data — skipping 21_elasticity_pair_best_sim_across_specs.png')
+        return
+
+    # Step 2: collect cross-price pairs available for each spec's best seed
+    spec_cross: dict[str, dict[tuple, float]] = {}
+    for entry in best_list:
+        spec, seed = entry['spec'], entry['seed']
+        pairs = {}
+        for r in elas_rows:
+            if r['spec'] == spec and r['seed'] == seed and r['own_price'] == 'False':
+                pairs[(r['product_j'], r['product_k'])] = float(r['elasticity'])
+        if pairs:
+            spec_cross[spec] = pairs
+
+    if not spec_cross:
+        print(f'  [{label}] No elasticity data for any spec\'s best seed — skipping 21_elasticity_pair_best_sim_across_specs.png')
+        return
+
+    # Step 3: select pair by coverage then mean cross-elasticity
+    pair_specs: dict[tuple, list[float]] = {}
+    for pairs in spec_cross.values():
+        for pair, val in pairs.items():
+            pair_specs.setdefault(pair, []).append(val)
+    max_cov    = max(len(v) for v in pair_specs.values())
+    candidates = {p: v for p, v in pair_specs.items() if len(v) == max_cov}
+    prod_j, prod_k = max(candidates, key=lambda p: sum(candidates[p]) / len(candidates[p]))
+
+    # Step 4: collect 4 values per spec from its best seed, in objective-rank order
+    panel_keys = ['e_jj', 'e_kk', 'e_jk', 'e_kj']
+    spec_vals: list[tuple] = []   # (short_spec, {key: val})
+    for entry in best_list:
+        spec, seed = entry['spec'], entry['seed']
+        if spec not in spec_cross:
+            continue
+        vals: dict[str, float] = {}
+        for r in elas_rows:
+            if r['spec'] != spec or r['seed'] != seed:
+                continue
+            pj, pk, v = r['product_j'], r['product_k'], float(r['elasticity'])
+            if pj == prod_j and pk == prod_j:
+                vals['e_jj'] = v
+            elif pj == prod_k and pk == prod_k:
+                vals['e_kk'] = v
+            elif pj == prod_j and pk == prod_k:
+                vals['e_jk'] = v
+            elif pj == prod_k and pk == prod_j:
+                vals['e_kj'] = v
+        spec_vals.append((_short(spec, 30), vals))
+
+    if not spec_vals:
+        print(f'  [{label}] No data after filtering — skipping 21_elasticity_pair_best_sim_across_specs.png')
+        return
+
+    short_specs = [sv[0] for sv in spec_vals]
+    xs = list(range(len(spec_vals)))
+
+    panel_info = [
+        ('e_jj', f'Own-price: {prod_j}',         COL_BASIN_A),
+        ('e_kk', f'Own-price: {prod_k}',         COL_BASIN_B),
+        ('e_jk', f'Cross-price: {prod_j}→{prod_k}', PALETTE[4]),
+        ('e_kj', f'Cross-price: {prod_k}→{prod_j}', PALETTE[5]),
+    ]
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7), sharey=False)
+    axes = axes.flatten()
+
+    for ax, (key, title, color) in zip(axes, panel_info):
+        vals  = [sv[1].get(key, float('nan')) for sv in spec_vals]
+        valid = [(x, v) for x, v in zip(xs, vals) if not math.isnan(v)]
+
+        if valid:
+            vx, vy = zip(*valid)
+            ax.scatter(vx, vy, color=color, s=70, zorder=3)
+            mean_v = sum(vy) / len(vy)
+            ax.axhline(mean_v, color=color, linewidth=1.2, linestyle='--', alpha=0.7,
+                       label=f'mean={mean_v:.4f}')
+            ax.legend(fontsize=8, loc='best')
+
+        ax.set_xticks(xs)
+        ax.set_xticklabels(short_specs, rotation=40, ha='right', fontsize=7)
+        ax.set_xlabel('Specification (ranked by best objective)', fontsize=8)
+        ax.set_ylabel('Elasticity', fontsize=9)
+        ax.set_title(title, fontweight='bold', fontsize=9)
+        ax.grid(axis='y', linewidth=0.4, alpha=0.5)
+
+    fig.suptitle(f'{label} — Elasticity pair: best simulation per spec\n'
+                 f'Pair  j={prod_j}, k={prod_k}  ·  one point = best seed of each spec',
+                 fontweight='bold', fontsize=9, y=1.01)
+    _footer(fig, f'{label} · Analysis 21 · 4 elasticities for selected pair, best-seed per spec, sorted by objective')
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    _savefig(fig, out_dir, '21_elasticity_pair_best_sim_across_specs.png')
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1092,6 +1191,7 @@ def main():
     plot_spec_pairwise_mad(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
     plot_objective_spec_comparison(nevo_rows,          'NEVO', NEVO_ANALYSIS_DIR)
     plot_elasticity_pair_across_sims(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
+    plot_elasticity_pair_best_sim_across_specs(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
 
     # --- BLP ---
     print('\n=== BLP figures ===')
@@ -1110,6 +1210,7 @@ def main():
     plot_spec_pairwise_mad(blp_elas_rows, blp_rows, 'BLP', BLP_ANALYSIS_DIR)
     plot_objective_spec_comparison(blp_rows,         'BLP',  BLP_ANALYSIS_DIR)
     plot_elasticity_pair_across_sims(blp_elas_rows, blp_rows, 'BLP',  BLP_ANALYSIS_DIR)
+    plot_elasticity_pair_best_sim_across_specs(blp_elas_rows, blp_rows, 'BLP',  BLP_ANALYSIS_DIR)
 
     print(f'\nFigures saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')

@@ -1038,6 +1038,96 @@ def elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict], lab
     print()
 
 
+def elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
+    """Analysis 21 — 4 elasticities for one product pair, one best-simulation per spec, across all specs."""
+    _header(f'{label} -- Elasticity pair: best simulation per spec, compared across specifications')
+
+    # Step 1: best seed per spec (sorted by objective ascending)
+    best_list = _best_per_spec(all_rows)
+    if not best_list:
+        print('  No data.\n')
+        return
+
+    # Step 2: for each spec's best seed, collect cross-price pairs that have data
+    spec_cross: dict[str, dict[tuple, float]] = {}   # spec -> {(j,k): elasticity}
+    skipped = 0
+    for entry in best_list:
+        spec, seed = entry['spec'], entry['seed']
+        pairs = {}
+        for r in elas_rows:
+            if r['spec'] == spec and r['seed'] == seed and r['own_price'] == 'False':
+                pairs[(r['product_j'], r['product_k'])] = float(r['elasticity'])
+        if pairs:
+            spec_cross[spec] = pairs
+        else:
+            skipped += 1
+
+    if not spec_cross:
+        print('  No elasticity data for any spec\'s best seed.\n')
+        return
+
+    # Step 3: select pair appearing in most specs; break ties by highest mean cross-elasticity
+    pair_specs: dict[tuple, list[float]] = {}
+    for pairs in spec_cross.values():
+        for pair, val in pairs.items():
+            pair_specs.setdefault(pair, []).append(val)
+
+    max_coverage = max(len(v) for v in pair_specs.values())
+    candidates   = {p: v for p, v in pair_specs.items() if len(v) == max_coverage}
+    prod_j, prod_k = max(candidates, key=lambda p: sum(candidates[p]) / len(candidates[p]))
+
+    n_specs = len(spec_cross)
+    print(f'  Product pair selected: j={prod_j}, k={prod_k}')
+    print(f'  (pair with highest mean cross-price elasticity across {n_specs} spec(s) with data)')
+    if skipped:
+        print(f'  Specs without elasticity data for best seed: {skipped} (skipped)')
+    print()
+
+    # Step 4: collect 4 values per spec from its best seed
+    keys    = ['e_jj', 'e_kk', 'e_jk', 'e_kj']
+    records = []   # list of (rank, spec, seed, obj, {key: val})
+    for rank, entry in enumerate(best_list, 1):
+        spec, seed = entry['spec'], entry['seed']
+        if spec not in spec_cross:
+            continue
+        vals: dict[str, float] = {}
+        for r in elas_rows:
+            if r['spec'] != spec or r['seed'] != seed:
+                continue
+            pj, pk, v = r['product_j'], r['product_k'], float(r['elasticity'])
+            if pj == prod_j and pk == prod_j:
+                vals['e_jj'] = v
+            elif pj == prod_k and pk == prod_k:
+                vals['e_kk'] = v
+            elif pj == prod_j and pk == prod_k:
+                vals['e_jk'] = v
+            elif pj == prod_k and pk == prod_j:
+                vals['e_kj'] = v
+        records.append((rank, spec, seed, float(entry['objective']), vals))
+
+    spec_w = 55
+    print(f'  {"Rank":>4}  {"Specification":<{spec_w}}  {"Seed":>6}  {"Obj":>10}  '
+          f'{"e_jj":>10}  {"e_kk":>10}  {"e_jk":>10}  {"e_kj":>10}')
+    _sep()
+    for rank, spec, seed, obj, vals in records:
+        def _fv(k):
+            v = vals.get(k, float('nan'))
+            return f'{v:>10.4f}' if not math.isnan(v) else f'{"n/a":>10}'
+        print(f'  {rank:>4}  {spec:<{spec_w}}  {seed:>6}  {obj:>10.4f}  '
+              f'{_fv("e_jj")}  {_fv("e_kk")}  {_fv("e_jk")}  {_fv("e_kj")}')
+    _sep()
+
+    # Summary stats across specs
+    for k in keys:
+        series = [r[4].get(k) for r in records if k in r[4]]
+        if not series:
+            continue
+        st = _stats(series)
+        print(f'  {k}  mean={st["mean"]:>8.4f}  std={st["std"]:>8.4f}  '
+              f'min={st["mn"]:>8.4f}  max={st["mx"]:>8.4f}')
+    print()
+
+
 def main():
 
     nevo_rows     = _load(NEVO_CSV)
@@ -1071,6 +1161,7 @@ def main():
     _run_and_save(NEVO_ANALYSIS_DIR, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          nevo_elas_rows, nevo_rows, 'NEVO')
     _run_and_save(NEVO_ANALYSIS_DIR, '19_objective_spec_comparison.txt',             objective_spec_comparison,             nevo_rows, 'NEVO')
     _run_and_save(NEVO_ANALYSIS_DIR, '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, nevo_elas_rows, nevo_rows, 'NEVO')
 
     # --- BLP analyses ---
     _run_and_save(BLP_ANALYSIS_DIR,  '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
@@ -1089,6 +1180,7 @@ def main():
     _run_and_save(BLP_ANALYSIS_DIR,  '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          blp_elas_rows, blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '19_objective_spec_comparison.txt',             objective_spec_comparison,             blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, blp_elas_rows, blp_rows, 'BLP')
 
     print(f'\nAnalysis saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')
