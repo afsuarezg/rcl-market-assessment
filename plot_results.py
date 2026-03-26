@@ -1152,6 +1152,68 @@ def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: 
     _savefig(fig, out_dir, '21_elasticity_pair_best_sim_across_specs.png')
 
 
+def plot_price_coef_across_sims(rows: list[dict], label: str, out_dir: Path):
+    """Analysis 22 — price coefficients across all simulations of the best-mean-obj spec."""
+    # Spec with lowest mean objective
+    by_spec: dict[str, list[dict]] = {}
+    for r in rows:
+        by_spec.setdefault(r['spec'], []).append(r)
+    if not by_spec:
+        print(f'  [{label}] No data — skipping 22_price_coef_across_sims.png')
+        return
+
+    best_spec = min(by_spec,
+                    key=lambda s: sum(float(r['objective']) for r in by_spec[s]) / len(by_spec[s]))
+    spec_rows = sorted(by_spec[best_spec], key=lambda r: r['seed'])
+
+    seeds  = [r['seed'] for r in spec_rows]
+    objs   = [float(r['objective']) for r in spec_rows]
+    pcoefs = [float(r['price_coef']) for r in spec_rows]
+    valid  = [_valid(r) for r in spec_rows]
+    colors = [COL_VALID if v else COL_INVALID for v in valid]
+    xs     = list(range(len(seeds)))
+
+    mean_pc = sum(pcoefs) / len(pcoefs)
+    short_spec = _short(best_spec, 70)
+
+    fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Left panel: price_coef per seed
+    ax_left.scatter(xs, pcoefs, c=colors, s=70, zorder=3)
+    ax_left.axhline(mean_pc, color='#444', linewidth=1.2, linestyle='--',
+                    label=f'mean={mean_pc:.4f}')
+    ax_left.axhline(0, color='black', linewidth=0.8, linestyle=':')
+    ax_left.set_xticks(xs)
+    ax_left.set_xticklabels(seeds, rotation=45, ha='right', fontsize=8)
+    ax_left.set_xlabel('Seed', fontsize=9)
+    ax_left.set_ylabel('Price coefficient (α)', fontsize=9)
+    ax_left.set_title('Price coefficient per simulation', fontweight='bold', fontsize=9)
+    ax_left.grid(axis='y', linewidth=0.4, alpha=0.5)
+    from matplotlib.patches import Patch
+    ax_left.legend(handles=[
+        ax_left.lines[0],
+        Patch(color=COL_VALID,   label='valid (α < 0)'),
+        Patch(color=COL_INVALID, label='invalid (α ≥ 0)'),
+    ], fontsize=8, loc='best')
+
+    # Right panel: price_coef vs objective
+    ax_right.scatter(objs, pcoefs, c=colors, s=70, zorder=3)
+    for obj, pc, seed in zip(objs, pcoefs, seeds):
+        ax_right.annotate(str(seed), (obj, pc), textcoords='offset points',
+                          xytext=(4, 2), fontsize=7, color='#555')
+    ax_right.axhline(0, color='black', linewidth=0.8, linestyle=':')
+    ax_right.set_xlabel('GMM Objective', fontsize=9)
+    ax_right.set_ylabel('Price coefficient (α)', fontsize=9)
+    ax_right.set_title('Price coefficient vs. objective', fontweight='bold', fontsize=9)
+    ax_right.grid(linewidth=0.4, alpha=0.5)
+
+    fig.suptitle(f'{label} — Price coefficient across simulations\nSpec: {short_spec}',
+                 fontweight='bold', fontsize=9, y=1.01)
+    _footer(fig, f'{label} · Analysis 22 · Price coef per simulation for best-mean-obj spec')
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    _savefig(fig, out_dir, '22_price_coef_across_sims.png')
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1192,6 +1254,7 @@ def main():
     plot_objective_spec_comparison(nevo_rows,          'NEVO', NEVO_ANALYSIS_DIR)
     plot_elasticity_pair_across_sims(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
     plot_elasticity_pair_best_sim_across_specs(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
+    plot_price_coef_across_sims(nevo_rows,                             'NEVO', NEVO_ANALYSIS_DIR)
 
     # --- BLP ---
     print('\n=== BLP figures ===')
@@ -1211,6 +1274,7 @@ def main():
     plot_objective_spec_comparison(blp_rows,         'BLP',  BLP_ANALYSIS_DIR)
     plot_elasticity_pair_across_sims(blp_elas_rows, blp_rows, 'BLP',  BLP_ANALYSIS_DIR)
     plot_elasticity_pair_best_sim_across_specs(blp_elas_rows, blp_rows, 'BLP',  BLP_ANALYSIS_DIR)
+    plot_price_coef_across_sims(blp_rows,                              'BLP',  BLP_ANALYSIS_DIR)
 
     print(f'\nFigures saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')

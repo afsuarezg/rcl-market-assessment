@@ -1128,6 +1128,49 @@ def elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: list[
     print()
 
 
+def price_coef_across_sims(rows: list[dict], label: str = ''):
+    """Analysis 22 — price coefficients across all simulations of the best-mean-obj spec."""
+    _header(f'{label} -- Price coefficient across all simulations (best-mean-obj spec)')
+
+    # Spec with lowest mean objective across all its starts
+    by_spec: dict[str, list[dict]] = {}
+    for r in rows:
+        by_spec.setdefault(r['spec'], []).append(r)
+    if not by_spec:
+        print('  No data.\n')
+        return
+
+    best_spec = min(by_spec,
+                    key=lambda s: sum(float(r['objective']) for r in by_spec[s]) / len(by_spec[s]))
+    spec_rows = sorted(by_spec[best_spec], key=lambda r: r['seed'])
+    mean_obj  = sum(float(r['objective']) for r in spec_rows) / len(spec_rows)
+
+    print(f'  Spec (lowest mean obj): {best_spec}')
+    print(f'  Mean objective: {mean_obj:.4f}   N simulations: {len(spec_rows)}\n')
+
+    print(f'  {"Seed":>6}  {"Objective":>12}  {"price_coef":>12}  {"Valid":>6}')
+    _sep()
+    pcoefs = []
+    for r in spec_rows:
+        obj   = float(r['objective'])
+        alpha = float(r['price_coef'])
+        valid = _valid(r)
+        pcoefs.append(alpha)
+        marker = 'yes' if valid else 'no'
+        print(f'  {r["seed"]:>6}  {obj:>12.4f}  {alpha:>12.4f}  {marker:>6}')
+    _sep()
+
+    st = _stats(pcoefs)
+    n_valid = sum(1 for r in spec_rows if _valid(r))
+    print(f'\n  N valid (price_coef < 0): {n_valid} / {len(spec_rows)}')
+    print(f'  mean  = {st["mean"]:>10.4f}')
+    print(f'  std   = {st["std"]:>10.4f}')
+    print(f'  min   = {st["mn"]:>10.4f}')
+    print(f'  max   = {st["mx"]:>10.4f}')
+    print(f'  range = {st["mx"] - st["mn"]:>10.4f}')
+    print()
+
+
 def main():
 
     nevo_rows     = _load(NEVO_CSV)
@@ -1162,6 +1205,7 @@ def main():
     _run_and_save(NEVO_ANALYSIS_DIR, '19_objective_spec_comparison.txt',             objective_spec_comparison,             nevo_rows, 'NEVO')
     _run_and_save(NEVO_ANALYSIS_DIR, '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           nevo_elas_rows, nevo_rows, 'NEVO')
     _run_and_save(NEVO_ANALYSIS_DIR, '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '22_price_coef_across_sims.txt',               price_coef_across_sims,                nevo_rows, 'NEVO')
 
     # --- BLP analyses ---
     _run_and_save(BLP_ANALYSIS_DIR,  '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
@@ -1181,6 +1225,7 @@ def main():
     _run_and_save(BLP_ANALYSIS_DIR,  '19_objective_spec_comparison.txt',             objective_spec_comparison,             blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           blp_elas_rows, blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '22_price_coef_across_sims.txt',               price_coef_across_sims,                blp_rows, 'BLP')
 
     print(f'\nAnalysis saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')
