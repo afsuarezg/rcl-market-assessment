@@ -908,6 +908,63 @@ def plot_nevo_firm_substitution_heatmap(elas_rows: list[dict], all_rows: list[di
     _savefig(fig, out_dir, '15_firm_substitution_heatmap.png')
 
 
+def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
+    """Analysis 19 — mean ± std of GMM objective across all starts, ranked by mean."""
+    by_spec: dict[str, list[float]] = {}
+    for r in rows:
+        by_spec.setdefault(r['spec'], []).append(float(r['objective']))
+
+    ranked = sorted(by_spec.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+    if not ranked:
+        print(f'  [{label}] No data — skipping 19_objective_spec_comparison.png')
+        return
+
+    specs  = [_short(kv[0]) for kv in ranked]
+    means  = [sum(kv[1]) / len(kv[1]) for kv in ranked]
+    stds   = [math.sqrt(sum((v - m) ** 2 for v in kv[1]) / len(kv[1]))
+              for kv, m in zip(ranked, means)]
+    mins   = [min(kv[1]) for kv in ranked]
+    maxs   = [max(kv[1]) for kv in ranked]
+    counts = [len(kv[1]) for kv in ranked]
+
+    # Validity: any start in this spec has price_coef < 0
+    valid_specs = {r['spec'] for r in rows if _valid(r)}
+    colors = [COL_VALID if kv[0] in valid_specs else COL_INVALID for kv in ranked]
+
+    n = len(ranked)
+    fig, ax = plt.subplots(figsize=(9, max(3, 0.45 * n + 1.5)))
+    ys = list(range(n))
+
+    # Bars for mean
+    ax.barh(ys, means, color=colors, alpha=0.6, edgecolor='white', linewidth=0.5)
+    # Error bars (±1 std)
+    ax.errorbar(means, ys, xerr=stds, fmt='none', color='#444', linewidth=1.2,
+                capsize=3, capthick=1.2, label='±1 std')
+    # Min/max range markers
+    for y, mn, mx in zip(ys, mins, maxs):
+        ax.plot([mn, mx], [y, y], color='#888', linewidth=0.7, linestyle='--')
+        ax.plot(mn, y, marker='|', color='#555', markersize=6)
+        ax.plot(mx, y, marker='|', color='#555', markersize=6)
+    # Annotate counts
+    x_max = max(mx for mx in maxs) if maxs else 1
+    for y, m, c in zip(ys, means, counts):
+        ax.text(x_max * 1.01, y, f'n={c}', va='center', ha='left', fontsize=7, color='#555')
+
+    ax.set_yticks(ys)
+    ax.set_yticklabels(specs, fontsize=max(6, 9 - n // 8))
+    ax.set_xlabel('GMM Objective')
+    ax.set_title(f'{label} — Objective by Specification (mean ± std, range)\nGreen = any valid start; sorted by mean',
+                 fontweight='bold', fontsize=10)
+    ax.invert_yaxis()
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(color=COL_VALID, alpha=0.6, label='any valid start'),
+                       Patch(color=COL_INVALID, alpha=0.6, label='no valid start')],
+              loc='lower right', fontsize=8)
+    _footer(fig, f'{label} · Analysis 19 · Mean±std of GMM objective across all random starts per spec')
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    _savefig(fig, out_dir, '19_objective_spec_comparison.png')
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -945,6 +1002,7 @@ def main():
     plot_own_stability_heatmap(nevo_elas_rows,  nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
     plot_cross_stability_heatmap(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
     plot_spec_pairwise_mad(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
+    plot_objective_spec_comparison(nevo_rows,          'NEVO', NEVO_ANALYSIS_DIR)
 
     # --- BLP ---
     print('\n=== BLP figures ===')
@@ -961,6 +1019,7 @@ def main():
     plot_own_stability_heatmap(blp_elas_rows,  blp_rows, 'BLP', BLP_ANALYSIS_DIR)
     plot_cross_stability_heatmap(blp_elas_rows, blp_rows, 'BLP', BLP_ANALYSIS_DIR)
     plot_spec_pairwise_mad(blp_elas_rows, blp_rows, 'BLP', BLP_ANALYSIS_DIR)
+    plot_objective_spec_comparison(blp_rows,         'BLP',  BLP_ANALYSIS_DIR)
 
     print(f'\nFigures saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')

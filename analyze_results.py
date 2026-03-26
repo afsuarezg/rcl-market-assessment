@@ -53,13 +53,13 @@ def _find(relative: str) -> Path:
         f"Cannot find {relative!r} in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
     )
 
-NEVO_CSV      = _find('nevo/multistart_all.csv')
-BLP_CSV       = _find('blp/blp_multistart_all.csv')
-NEVO_ELAS_CSV = _find('nevo/elasticities_detail.csv')
-BLP_ELAS_CSV  = _find('blp/blp_elasticities_detail.csv')
+NEVO_CSV      = _find('nevo/multistart_all_.csv')
+BLP_CSV       = _find('blp/blp_multistart_all_.csv')
+NEVO_ELAS_CSV = _find('nevo/elasticities_detail_.csv')
+BLP_ELAS_CSV  = _find('blp/blp_elasticities_detail_.csv')
 
-NEVO_ANALYSIS_DIR = NEVO_CSV.parent / 'analysis'
-BLP_ANALYSIS_DIR  = BLP_CSV.parent  / 'analysis'
+NEVO_ANALYSIS_DIR = NEVO_CSV.parent / 'analysis_'
+BLP_ANALYSIS_DIR  = BLP_CSV.parent  / 'analysis_'
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -920,6 +920,46 @@ def nevo_elasticity_firm_substitution(elas_rows: list[dict], all_rows: list[dict
 # Main
 # ---------------------------------------------------------------------------
 
+def objective_spec_comparison(rows: list[dict], label: str = ''):
+    """Analysis 19 — aggregate and compare objective values across all starts per spec."""
+    _header(f'{label} -- Objective aggregation across specifications (all starts)')
+
+    by_spec: dict[str, list[float]] = {}
+    for r in rows:
+        by_spec.setdefault(r['spec'], []).append(float(r['objective']))
+
+    # Sort specs by mean objective ascending
+    ranked = sorted(by_spec.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+
+    all_objs = [v for vals in by_spec.values() for v in vals]
+    global_min = min(all_objs) if all_objs else float('nan')
+
+    print(f'  {"Rank":>4}  {"N":>3}  {"N valid":>7}  {"Mean obj":>10}  {"Median":>10}  '
+          f'{"Std":>9}  {"Min":>10}  {"Max":>10}  {"Range":>9}  {"CV%":>7}  Specification')
+    _sep()
+
+    for rank, (spec, objs) in enumerate(ranked, 1):
+        spec_rows = [r for r in rows if r['spec'] == spec]
+        n_valid   = sum(1 for r in spec_rows if _valid(r))
+        s         = _stats(objs)
+        cv        = (s['std'] / s['mean'] * 100) if s['mean'] else float('nan')
+        rng       = s['mx'] - s['mn']
+        print(f'  {rank:>4}  {len(objs):>3}  {n_valid:>7}  {s["mean"]:>10.4f}  {s["median"]:>10.4f}  '
+              f'{s["std"]:>9.4f}  {s["mn"]:>10.4f}  {s["mx"]:>10.4f}  {rng:>9.4f}  {cv:>7.2f}  {spec}')
+
+    _sep()
+    # Cross-spec summary
+    means   = [sum(v) / len(v) for v in by_spec.values()]
+    s_means = _stats(means)
+    print(f'\n  Cross-spec summary (N specs = {len(by_spec)}):')
+    print(f'    Mean of spec-means : {s_means["mean"]:.4f}')
+    print(f'    Std  of spec-means : {s_means["std"]:.4f}')
+    print(f'    Best spec mean     : {s_means["mn"]:.4f}')
+    print(f'    Worst spec mean    : {s_means["mx"]:.4f}')
+    print(f'    Global minimum obj : {global_min:.4f}')
+    print()
+
+
 def main():
 
     nevo_rows     = _load(NEVO_CSV)
@@ -951,6 +991,7 @@ def main():
     _run_and_save(NEVO_ANALYSIS_DIR, '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   nevo_elas_rows, nevo_rows, 'NEVO')
     _run_and_save(NEVO_ANALYSIS_DIR, '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, nevo_elas_rows, nevo_rows, 'NEVO')
     _run_and_save(NEVO_ANALYSIS_DIR, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '19_objective_spec_comparison.txt',             objective_spec_comparison,             nevo_rows, 'NEVO')
 
     # --- BLP analyses ---
     _run_and_save(BLP_ANALYSIS_DIR,  '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
@@ -967,6 +1008,7 @@ def main():
     _run_and_save(BLP_ANALYSIS_DIR,  '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   blp_elas_rows, blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, blp_elas_rows, blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '19_objective_spec_comparison.txt',             objective_spec_comparison,             blp_rows, 'BLP')
 
     print(f'\nAnalysis saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')
