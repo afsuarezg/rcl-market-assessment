@@ -54,12 +54,12 @@ def _find(relative: str) -> Path:
 
 def _resolve_paths():
     """Resolve all CSV paths at runtime (not import time) so missing BLP files don't break import."""
-    nevo_csv      = _find('nevo/multistart_all.csv')
-    blp_csv       = _find('blp/blp_multistart_all.csv')
-    nevo_elas_csv = _find('nevo/elasticities_detail.csv')
-    blp_elas_csv  = _find('blp/blp_elasticities_detail.csv')
+    nevo_csv      = _find('nevo/multistart_all_.csv')
+    blp_csv       = _find('blp/blp_multistart_all_.csv')
+    nevo_elas_csv = _find('nevo/elasticities_detail_.csv')
+    blp_elas_csv  = _find('blp/blp_elasticities_detail_.csv')
     return (nevo_csv, blp_csv, nevo_elas_csv, blp_elas_csv,
-            nevo_csv.parent / 'analysis', blp_csv.parent / 'analysis')
+            nevo_csv.parent / 'analysis_', blp_csv.parent / 'analysis_')
 
 # ---------------------------------------------------------------------------
 # Helpers  (mirrors analyze_results.py)
@@ -382,9 +382,18 @@ def plot_cross_elas_heatmap(elas_rows: list[dict], all_rows: list[dict],
     seed = best_list[0]['seed']
 
     elas_dict: dict[tuple, float] = {}
-    for r in elas_rows:
-        if r['spec'] == spec and r['seed'] == seed:
-            elas_dict[(r['product_j'], r['product_k'])] = float(r['elasticity'])
+    for candidate in best_list:
+        spec = candidate['spec']
+        seed = candidate['seed']
+        for r in elas_rows:
+            if r['spec'] == spec and r['seed'] == seed:
+                elas_dict[(r['product_j'], r['product_k'])] = float(r['elasticity'])
+        if elas_dict:
+            break
+
+    if not elas_dict:
+        print(f'  [{label}] No elasticity rows match any best spec — skipping 12_cross_elas_heatmap.png')
+        return
 
     products = sorted({p for (j, k) in elas_dict for p in (j, k)})
     if len(products) > max_products:
@@ -855,15 +864,22 @@ def plot_nevo_firm_substitution_heatmap(elas_rows: list[dict], all_rows: list[di
         print('  [NEVO] No valid specs — skipping 15_firm_substitution_heatmap.png')
         return
 
-    best_spec = best_list[0]['spec']
-    best_seed = seed_map[best_spec]
-
     firm_pair: dict[tuple, list[float]] = {}
-    for r in elas_rows:
-        if r['spec'] != best_spec or r['seed'] != best_seed or r['own_price'] == 'True':
-            continue
-        key = (_firm(r['product_j']), _firm(r['product_k']))
-        firm_pair.setdefault(key, []).append(float(r['elasticity']))
+    best_spec = best_list[0]['spec']
+    for candidate in best_list:
+        best_spec = candidate['spec']
+        best_seed = seed_map[best_spec]
+        for r in elas_rows:
+            if r['spec'] != best_spec or r['seed'] != best_seed or r['own_price'] == 'True':
+                continue
+            key = (_firm(r['product_j']), _firm(r['product_k']))
+            firm_pair.setdefault(key, []).append(float(r['elasticity']))
+        if firm_pair:
+            break
+
+    if not firm_pair:
+        print('  [NEVO] No firm-pair elasticity rows match any best spec — skipping 15_firm_substitution_heatmap.png')
+        return
 
     firms = sorted({f for (fj, fk) in firm_pair for f in (fj, fk)})
     n     = len(firms)
