@@ -20,6 +20,9 @@ Outputs analysis tables to stdout covering:
           11. Elasticity stability across multi-start seeds
           12. Top substitutes per product (best spec)
           13. Cross-price elasticity asymmetry (best spec)
+          16. Own-price elasticity product-level cross-spec stability
+          17. Cross-price elasticity cross-spec stability (top substitute pairs)
+          18. Pairwise spec agreement matrix (mean absolute deviation of own-price)
   [Nevo]  02. Demographic expansion effect (fixed X2)
           03. X2 characteristic comparison (fixed demographics)
           14. Cross-spec Spearman rank correlation of own-price elasticities
@@ -491,6 +494,239 @@ def elasticity_asymmetry(elas_rows: list[dict], all_rows: list[dict], label: str
         print(f'    {j:<14}  {k:<14}  {ejk:>10.4f}  {ekj:>10.4f}  {diff:>10.4f}')
     print()
 
+def elasticity_own_cross_spec_stability(elas_rows: list[dict], all_rows: list[dict],
+                                        label: str = ''):
+    """Analysis 16: per-product own-price elasticity stability across specifications."""
+    _header(f'{label} -- Own-price elasticity product-level cross-spec stability')
+
+    seed_map  = _best_seed_map(all_rows)
+    best_list = _best_per_spec(all_rows)
+    specs     = [r['spec'] for r in best_list]
+
+    if len(specs) < 2:
+        print('  Fewer than 2 specifications — cross-spec comparison not available.')
+        print()
+        return
+
+    # {product: {spec: own_elas}} using best seed per spec
+    prod_spec_elas: dict[str, dict[str, float]] = {}
+    for r in elas_rows:
+        if r['own_price'] == 'True' and seed_map.get(r['spec']) == r['seed']:
+            prod_spec_elas.setdefault(r['product_j'], {})[r['spec']] = float(r['elasticity'])
+
+    # Keep products present in all specs
+    all_products = [p for p, d in prod_spec_elas.items() if len(d) == len(specs)]
+    if not all_products:
+        print('  No products found in all specifications.')
+        print()
+        return
+
+    # For large markets (BLP) limit to the 20 most elastic products
+    MAX_PRODS = 20 if len(all_products) > 50 else len(all_products)
+    all_products_sorted = sorted(all_products,
+                                 key=lambda p: sum(prod_spec_elas[p].values()) / len(specs))
+    display_products = all_products_sorted[:MAX_PRODS]
+    if len(all_products) > 50:
+        print(f'  ({len(all_products)} products total — showing {MAX_PRODS} most price-elastic)')
+        print()
+
+    # Compute CV per product (std / |mean| across specs)
+    def _cv(vals: list[float]) -> float:
+        s = _stats(vals)
+        return s['std'] / abs(s['mean']) if s['mean'] != 0 else float('nan')
+
+    rows_data = []
+    for prod in display_products:
+        vals = [prod_spec_elas[prod][sp] for sp in specs]
+        s    = _stats(vals)
+        cv   = _cv(vals)
+        rows_data.append((prod, cv, s, vals))
+
+    # Sort by CV descending (most unstable first)
+    rows_data.sort(key=lambda x: x[1] if not math.isnan(x[1]) else -1, reverse=True)
+
+    # Short spec labels for column headers
+    short = [sp.replace('x2=', '').replace('demos=', '').replace(' | ', '|') for sp in specs]
+    col_w = 9
+
+    # Header
+    print(f'  {"Product":<14}  {"CV":>7}  {"std":>8}  {"mean":>9}  {"min":>9}  {"max":>9}  '
+          + ''.join(f'{s:>{col_w}}' for s in short))
+    _sep(14 + 7 + 8 + 9 + 9 + 9 + col_w * len(specs) + 14)
+
+    for prod, cv, s, vals in rows_data:
+        cv_str = f'{cv:>7.4f}' if not math.isnan(cv) else f'{"nan":>7}'
+        val_str = ''.join(f'{v:>{col_w}.4f}' for v in vals)
+        print(f'  {prod:<14}  {cv_str}  {s["std"]:>8.4f}  {s["mean"]:>9.4f}'
+              f'  {s["mn"]:>9.4f}  {s["mx"]:>9.4f}  {val_str}')
+
+    # Aggregate stability
+    all_cvs = [cv for _, cv, _, _ in rows_data if not math.isnan(cv)]
+    if all_cvs:
+        print()
+        print(f'  Mean CV across {len(all_cvs)} products: {sum(all_cvs) / len(all_cvs):.4f}')
+        print(f'  Max  CV: {max(all_cvs):.4f}')
+    print()
+
+
+def elasticity_cross_cross_spec_stability(elas_rows: list[dict], all_rows: list[dict],
+                                          label: str = '', top_k: int = 10):
+    """Analysis 17: cross-price elasticity stability for top substitute pairs across specs."""
+    _header(f'{label} -- Cross-price elasticity cross-spec stability (top-{top_k} substitute pairs)')
+
+    seed_map  = _best_seed_map(all_rows)
+    best_list = _best_per_spec(all_rows)
+    specs     = [r['spec'] for r in best_list]
+
+    if len(specs) < 2:
+        print('  Fewer than 2 specifications — cross-spec comparison not available.')
+        print()
+        return
+
+    if not best_list:
+        print('  No valid specs found.')
+        print()
+        return
+
+    # Identify top substitute pairs from best spec (rank 1)
+    best_spec = best_list[0]['spec']
+    best_seed = seed_map[best_spec]
+    cross_best: list[tuple[str, str, float]] = []
+    for r in elas_rows:
+        if r['spec'] == best_spec and r['seed'] == best_seed and r['own_price'] == 'False':
+            cross_best.append((r['product_j'], r['product_k'], float(r['elasticity'])))
+
+    cross_best.sort(key=lambda x: x[2], reverse=True)
+    top_pairs = [(j, k) for j, k, _ in cross_best[:top_k]]
+
+    if not top_pairs:
+        print('  No cross-price elasticities found for best spec.')
+        print()
+        return
+
+    print(f'  Reference spec (rank 1 by objective): {best_spec}')
+    print()
+
+    # For each top pair collect elasticity across all specs
+    pair_spec_elas: dict[tuple, dict[str, float]] = {}
+    for r in elas_rows:
+        if r['own_price'] == 'False' and seed_map.get(r['spec']) == r['seed']:
+            key = (r['product_j'], r['product_k'])
+            if key in set(top_pairs):
+                pair_spec_elas.setdefault(key, {})[r['spec']] = float(r['elasticity'])
+
+    def _cv(vals: list[float]) -> float:
+        s = _stats(vals)
+        return s['std'] / abs(s['mean']) if s['mean'] != 0 else float('nan')
+
+    rows_data = []
+    for (j, k) in top_pairs:
+        d = pair_spec_elas.get((j, k), {})
+        if len(d) < 2:
+            continue
+        vals = [d.get(sp, float('nan')) for sp in specs]
+        valid_vals = [v for v in vals if not math.isnan(v)]
+        if not valid_vals:
+            continue
+        s  = _stats(valid_vals)
+        cv = _cv(valid_vals)
+        rows_data.append((j, k, cv, s, vals))
+
+    if not rows_data:
+        print('  Insufficient cross-spec data for top substitute pairs.')
+        print()
+        return
+
+    rows_data.sort(key=lambda x: x[2] if not math.isnan(x[2]) else -1, reverse=True)
+
+    short = [sp.replace('x2=', '').replace('demos=', '').replace(' | ', '|') for sp in specs]
+    col_w = 9
+
+    print(f'  {"j":<14}  {"k":<14}  {"CV":>7}  {"std":>8}  {"mean":>9}  '
+          + ''.join(f'{s:>{col_w}}' for s in short))
+    _sep(14 + 14 + 7 + 8 + 9 + col_w * len(specs) + 14)
+
+    for j, k, cv, s, vals in rows_data:
+        cv_str  = f'{cv:>7.4f}' if not math.isnan(cv) else f'{"nan":>7}'
+        val_str = ''.join(f'{v:>{col_w}.4f}' if not math.isnan(v) else f'{"n/a":>{col_w}}'
+                          for v in vals)
+        print(f'  {j:<14}  {k:<14}  {cv_str}  {s["std"]:>8.4f}  {s["mean"]:>9.4f}  {val_str}')
+
+    all_cvs = [cv for _, _, cv, _, _ in rows_data if not math.isnan(cv)]
+    if all_cvs:
+        print()
+        print(f'  Mean CV across {len(all_cvs)} pairs: {sum(all_cvs) / len(all_cvs):.4f}')
+        print(f'  Max  CV: {max(all_cvs):.4f}')
+    print()
+
+
+def elasticity_spec_pairwise_mad(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
+    """Analysis 18: pairwise mean absolute deviation of own-price elasticities between specs."""
+    _header(f'{label} -- Pairwise spec agreement: mean absolute deviation of own-price elasticities')
+
+    seed_map  = _best_seed_map(all_rows)
+    best_list = _best_per_spec(all_rows)
+    specs     = [r['spec'] for r in best_list]
+
+    if len(specs) < 2:
+        print('  Fewer than 2 specifications — pairwise comparison not available.')
+        print()
+        return
+
+    # {spec: {product: own_elas}} for best seed per spec
+    spec_prod: dict[str, dict[str, float]] = {sp: {} for sp in specs}
+    for r in elas_rows:
+        if r['own_price'] == 'True' and seed_map.get(r['spec']) == r['seed']:
+            spec_prod[r['spec']][r['product_j']] = float(r['elasticity'])
+
+    # Build S×S MAD matrix
+    mad: dict[tuple, float] = {}
+    for i, si in enumerate(specs):
+        for j, sj in enumerate(specs):
+            if i == j:
+                mad[(si, sj)] = 0.0
+                continue
+            common = set(spec_prod[si]) & set(spec_prod[sj])
+            if not common:
+                mad[(si, sj)] = float('nan')
+                continue
+            mad[(si, sj)] = sum(abs(spec_prod[si][p] - spec_prod[sj][p])
+                                for p in common) / len(common)
+
+    short = [sp.replace('x2=', '').replace('demos=', '').replace(' | ', '|') for sp in specs]
+    col_w = max(max(len(s) for s in short) + 2, 9)
+
+    # Matrix header
+    pad = ' ' * (col_w + 2)
+    print(pad + ''.join(f'{s:>{col_w}}' for s in short))
+    _sep(col_w * (len(specs) + 1) + 2)
+
+    for i, si in enumerate(specs):
+        row_str = f'  {short[i]:<{col_w}}'
+        for sj in specs:
+            v = mad[(si, sj)]
+            row_str += f'{v:>{col_w}.4f}' if not math.isnan(v) else f'{"nan":>{col_w}}'
+        print(row_str)
+    print()
+
+    # Sorted pairwise list (excluding self-pairs, upper triangle only)
+    pairs = []
+    for i, si in enumerate(specs):
+        for j, sj in enumerate(specs):
+            if j <= i:
+                continue
+            pairs.append((si, sj, mad[(si, sj)]))
+    pairs.sort(key=lambda x: x[2] if not math.isnan(x[2]) else -1, reverse=True)
+
+    print(f'  Pairwise MAD (sorted, most divergent first):')
+    print(f'  {"MAD":>8}  Spec A  vs  Spec B')
+    _sep(80)
+    for sa, sb, v in pairs:
+        v_str = f'{v:>8.4f}' if not math.isnan(v) else f'{"nan":>8}'
+        print(f'  {v_str}  {sa}  vs  {sb}')
+    print()
+
+
 # ---------------------------------------------------------------------------
 # Nevo-specific analyses (hardcoded spec labels or firm encoding)
 # ---------------------------------------------------------------------------
@@ -712,6 +948,9 @@ def main():
     _run_and_save(NEVO_ANALYSIS_DIR, '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 nevo_elas_rows, nevo_rows, 'NEVO')
     _run_and_save(NEVO_ANALYSIS_DIR, '14_elasticity_cross_spec_correlation.txt', nevo_elasticity_cross_spec_correlation, nevo_elas_rows, nevo_rows)
     _run_and_save(NEVO_ANALYSIS_DIR, '15_elasticity_firm_substitution.txt',   nevo_elasticity_firm_substitution,    nevo_elas_rows, nevo_rows)
+    _run_and_save(NEVO_ANALYSIS_DIR, '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, nevo_elas_rows, nevo_rows, 'NEVO')
+    _run_and_save(NEVO_ANALYSIS_DIR, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          nevo_elas_rows, nevo_rows, 'NEVO')
 
     # --- BLP analyses ---
     _run_and_save(BLP_ANALYSIS_DIR,  '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
@@ -725,6 +964,9 @@ def main():
     _run_and_save(BLP_ANALYSIS_DIR,  '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     blp_elas_rows, blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           blp_elas_rows, blp_rows, 'BLP')
     _run_and_save(BLP_ANALYSIS_DIR,  '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, blp_elas_rows, blp_rows, 'BLP')
+    _run_and_save(BLP_ANALYSIS_DIR,  '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          blp_elas_rows, blp_rows, 'BLP')
 
     print(f'\nAnalysis saved to:')
     print(f'  {NEVO_ANALYSIS_DIR}')

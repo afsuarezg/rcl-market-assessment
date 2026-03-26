@@ -10,7 +10,8 @@
       "Bash(ls:*)",
       "Bash(find /c/Users/Andres.DESKTOP-D77KM25/Documents/rcl_market_assessment/.venv/Lib/site-packages/pyblp -type f -name *.py)",
       "Bash(find results:*)",
-      "Bash(.venv/Scripts/python analyze_results.py)"
+      "Bash(.venv/Scripts/python analyze_results.py)",
+      "Bash(find C:UsersAndres.DESKTOP-D77KM25Documentsrcl_market_assessmentresults -type f -name *.csv)"
     ]
   }
 }
