@@ -53,13 +53,6 @@ def _find(relative: str) -> Path:
         f"Cannot find {relative!r} in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
     )
 
-NEVO_CSV      = _find('nevo/multistart_all.csv')
-BLP_CSV       = _find('blp/blp_multistart_all.csv')
-NEVO_ELAS_CSV = _find('nevo/elasticities_detail.csv')
-BLP_ELAS_CSV  = _find('blp/blp_elasticities_detail.csv')
-
-NEVO_ANALYSIS_DIR = NEVO_CSV.parent / 'analysis'
-BLP_ANALYSIS_DIR  = BLP_CSV.parent  / 'analysis'
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1172,64 +1165,82 @@ def price_coef_across_sims(rows: list[dict], label: str = ''):
 
 
 def main():
-
-    nevo_rows     = _load(NEVO_CSV)
-    blp_rows      = _load(BLP_CSV)
-    nevo_elas_rows = _load(NEVO_ELAS_CSV)
-    blp_elas_rows  = _load(BLP_ELAS_CSV)
-
-    print(f'\nLoaded Nevo multistart: {len(nevo_rows)} rows from {NEVO_CSV}')
-    print(f'Loaded BLP  multistart: {len(blp_rows)} rows from {BLP_CSV}')
-    print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {NEVO_ELAS_CSV}')
-    print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {BLP_ELAS_CSV}\n')
-
-    # --- Nevo analyses ---
-    _run_and_save(NEVO_ANALYSIS_DIR, '01_objective_ranking.txt',              objective_ranking,                    nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '02_demographic_expansion.txt',          nevo_demographic_expansion,           nevo_rows)
-    _run_and_save(NEVO_ANALYSIS_DIR, '03_x2_comparison.txt',                  nevo_x2_comparison,                   nevo_rows)
-    _run_and_save(NEVO_ANALYSIS_DIR, '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '05_multistart_stability.txt',           multistart_stability,                 nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '06_convergence_audit.txt',              convergence_audit,                    nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '07_global_minimum.txt',                 global_minimum,                       nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '08_two_basin_analysis.txt',             two_basin_analysis,                   nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '10_elasticity_own_summary.txt',         elasticity_own_summary,               nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '14_elasticity_cross_spec_correlation.txt', nevo_elasticity_cross_spec_correlation, nevo_elas_rows, nevo_rows)
-    _run_and_save(NEVO_ANALYSIS_DIR, '15_elasticity_firm_substitution.txt',   nevo_elasticity_firm_substitution,    nevo_elas_rows, nevo_rows)
-    _run_and_save(NEVO_ANALYSIS_DIR, '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '19_objective_spec_comparison.txt',             objective_spec_comparison,             nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, nevo_elas_rows, nevo_rows, 'NEVO')
-    _run_and_save(NEVO_ANALYSIS_DIR, '22_price_coef_across_sims.txt',               price_coef_across_sims,                nevo_rows, 'NEVO')
+    completed = []
 
     # --- BLP analyses ---
-    _run_and_save(BLP_ANALYSIS_DIR,  '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '05_multistart_stability.txt',           multistart_stability,                 blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '06_convergence_audit.txt',              convergence_audit,                    blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '07_global_minimum.txt',                 global_minimum,                       blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '08_two_basin_analysis.txt',             two_basin_analysis,                   blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '10_elasticity_own_summary.txt',         elasticity_own_summary,               blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '19_objective_spec_comparison.txt',             objective_spec_comparison,             blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, blp_elas_rows, blp_rows, 'BLP')
-    _run_and_save(BLP_ANALYSIS_DIR,  '22_price_coef_across_sims.txt',               price_coef_across_sims,                blp_rows, 'BLP')
+    try:
+        blp_csv       = _find('blp/blp_multistart_all.csv')
+        blp_elas_csv  = _find('blp/blp_elasticities_detail.csv')
+        blp_rows      = _load(blp_csv)
+        blp_elas_rows = _load(blp_elas_csv)
+        blp_analysis_dir = blp_csv.parent / 'analysis'
+        print(f'Loaded BLP  multistart:   {len(blp_rows)} rows from {blp_csv}')
+        print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}\n')
 
-    print(f'\nAnalysis saved to:')
-    print(f'  {NEVO_ANALYSIS_DIR}')
-    print(f'  {BLP_ANALYSIS_DIR}')
+        _run_and_save(blp_analysis_dir, '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '05_multistart_stability.txt',           multistart_stability,                 blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '06_convergence_audit.txt',              convergence_audit,                    blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '07_global_minimum.txt',                 global_minimum,                       blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '08_two_basin_analysis.txt',             two_basin_analysis,                   blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '10_elasticity_own_summary.txt',         elasticity_own_summary,               blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '19_objective_spec_comparison.txt',             objective_spec_comparison,             blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '22_price_coef_across_sims.txt',               price_coef_across_sims,                blp_rows, 'BLP')
+        completed.append(blp_analysis_dir)
+    except FileNotFoundError as e:
+        print(f'[WARN] Skipping BLP analyses: {e}\n')
+
+    # --- Nevo analyses ---
+    try:
+        nevo_csv       = _find('nevo/multistart_all.csv')
+        nevo_elas_csv  = _find('nevo/elasticities_detail.csv')
+        nevo_rows      = _load(nevo_csv)
+        nevo_elas_rows = _load(nevo_elas_csv)
+        nevo_analysis_dir = nevo_csv.parent / 'analysis'
+        print(f'Loaded Nevo multistart:   {len(nevo_rows)} rows from {nevo_csv}')
+        print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}\n')
+
+        _run_and_save(nevo_analysis_dir, '01_objective_ranking.txt',              objective_ranking,                    nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '02_demographic_expansion.txt',          nevo_demographic_expansion,           nevo_rows)
+        _run_and_save(nevo_analysis_dir, '03_x2_comparison.txt',                  nevo_x2_comparison,                   nevo_rows)
+        _run_and_save(nevo_analysis_dir, '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '05_multistart_stability.txt',           multistart_stability,                 nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '06_convergence_audit.txt',              convergence_audit,                    nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '07_global_minimum.txt',                 global_minimum,                       nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '08_two_basin_analysis.txt',             two_basin_analysis,                   nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '10_elasticity_own_summary.txt',         elasticity_own_summary,               nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '14_elasticity_cross_spec_correlation.txt', nevo_elasticity_cross_spec_correlation, nevo_elas_rows, nevo_rows)
+        _run_and_save(nevo_analysis_dir, '15_elasticity_firm_substitution.txt',   nevo_elasticity_firm_substitution,    nevo_elas_rows, nevo_rows)
+        _run_and_save(nevo_analysis_dir, '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '19_objective_spec_comparison.txt',             objective_spec_comparison,             nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '22_price_coef_across_sims.txt',               price_coef_across_sims,                nevo_rows, 'NEVO')
+        completed.append(nevo_analysis_dir)
+    except FileNotFoundError as e:
+        print(f'[WARN] Skipping Nevo analyses: {e}\n')
+
+    if completed:
+        print('\nAnalysis saved to:')
+        for d in completed:
+            print(f'  {d}')
+    else:
+        print('[ERROR] No data found for either dataset. Nothing was analysed.')
 
 
 if __name__ == '__main__':
