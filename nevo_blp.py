@@ -596,8 +596,9 @@ def main(
 
     optimal_results: dict[str, list[StartResult]] = {}
     for label, starts in multistart_results.items():
-        print(f"\nApplying optimal instruments: {label}")
-        optimal_results[label] = [apply_optimal_instruments(starts[0])]
+        print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
+        opt_starts = [apply_optimal_instruments(sr) for sr in starts]
+        optimal_results[label] = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
 
     detail = compare_multistart_results(optimal_results)
     print("\n=== All Starts ===")
