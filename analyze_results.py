@@ -53,13 +53,13 @@ def _find(relative: str) -> Path:
         f"Cannot find {relative!r} in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
     )
 
-NEVO_CSV      = _find('nevo/multistart_all_.csv')
-BLP_CSV       = _find('blp/blp_multistart_all_.csv')
-NEVO_ELAS_CSV = _find('nevo/elasticities_detail_.csv')
-BLP_ELAS_CSV  = _find('blp/blp_elasticities_detail_.csv')
+NEVO_CSV      = _find('nevo/multistart_all.csv')
+BLP_CSV       = _find('blp/blp_multistart_all.csv')
+NEVO_ELAS_CSV = _find('nevo/elasticities_detail.csv')
+BLP_ELAS_CSV  = _find('blp/blp_elasticities_detail.csv')
 
-NEVO_ANALYSIS_DIR = NEVO_CSV.parent / 'analysis_'
-BLP_ANALYSIS_DIR  = BLP_CSV.parent  / 'analysis_'
+NEVO_ANALYSIS_DIR = NEVO_CSV.parent / 'analysis'
+BLP_ANALYSIS_DIR  = BLP_CSV.parent  / 'analysis'
 
 # ---------------------------------------------------------------------------
 # Helpers
