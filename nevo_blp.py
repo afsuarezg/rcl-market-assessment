@@ -572,56 +572,64 @@ def main(
     OUT_DIR = _RESULTS_ROOT / 'nevo'
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    RAW_ALL_CSV  = OUT_DIR / 'multistart_raw_all.csv'
+    OPT_ALL_CSV  = OUT_DIR / 'multistart_all.csv'
+    OPT_BEST_CSV = OUT_DIR / 'multistart_best.csv'
+    POST_CSV     = OUT_DIR / 'post_estimation_summary.csv'
+    ELAST_CSV    = OUT_DIR / 'elasticities_detail.csv'
+
     product_data, agent_data = load_data()
 
     N_STARTS = n_starts
 
-    multistart_results = {}
     for x2 in x2_combos:
         for demos in demo_combos:
             label = f"x2={x2} | demos={demos}"
-            all_csv = OUT_DIR / 'multistart_all.csv'
+
+            # Resume support: derive base_seed from previously saved raw starts
             base_seed = 0
-            if all_csv.exists():
-                existing_all = pd.read_csv(all_csv)
-                spec_rows = existing_all[
-                    (existing_all['spec'] == label) & existing_all['seed'].notna()
+            if RAW_ALL_CSV.exists():
+                existing_raw = pd.read_csv(RAW_ALL_CSV)
+                spec_rows = existing_raw[
+                    (existing_raw['spec'] == label) & existing_raw['seed'].notna()
                 ]
                 if not spec_rows.empty:
                     base_seed = int(spec_rows['seed'].max()) + 1
+
+            # ── Stage 1: multi-start ──────────────────────────────────────────
             print(f"\nSolving ({N_STARTS} starts): {label}, base_seed={base_seed}")
-            multistart_results[label] = run_multistart(
+            starts = run_multistart(
                 product_data, agent_data, x2, demos, n_starts=N_STARTS, base_seed=base_seed,
             )
+            raw_detail = compare_multistart_results({label: starts})
+            _append_csv(raw_detail, RAW_ALL_CSV, index=False)
+            print(f"Saved: multistart_raw_all.csv  [{label}]")
 
-    optimal_results: dict[str, list[StartResult]] = {}
-    for label, starts in multistart_results.items():
-        print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
-        opt_starts = [apply_optimal_instruments(sr) for sr in starts]
-        optimal_results[label] = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
+            # ── Stage 2: optimal instruments ─────────────────────────────────
+            print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
+            opt_starts = [apply_optimal_instruments(sr) for sr in starts]
+            opt_starts = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
 
-    detail = compare_multistart_results(optimal_results)
-    print("\n=== All Starts ===")
-    print(detail.to_string(index=False))
-    _append_csv(detail, OUT_DIR / 'multistart_all.csv', index=False)
-    print("Saved: multistart_all.csv")
+            opt_detail = compare_multistart_results({label: opt_starts})
+            print("\n=== All Starts ===")
+            print(opt_detail.to_string(index=False))
+            _append_csv(opt_detail, OPT_ALL_CSV, index=False)
 
-    print("\n=== Best per Specification ===")
-    best = detail[detail['best']].drop(columns='best').set_index('spec')
-    print(best.to_string())
-    _append_csv(best, OUT_DIR / 'multistart_best.csv')
-    print("Saved: multistart_best.csv")
+            opt_best = opt_detail[opt_detail['best']].drop(columns='best').set_index('spec')
+            print("\n=== Best per Specification ===")
+            print(opt_best.to_string())
+            _append_csv(opt_best, OPT_BEST_CSV)
 
-    print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
-    post = summarise_post_estimation(optimal_results, product_data, include_supply=False)
-    print(post.to_string())
-    _append_csv(post, OUT_DIR / 'post_estimation_summary.csv')
-    print("Saved: post_estimation_summary.csv")
+            post = summarise_post_estimation({label: opt_starts}, product_data, include_supply=False)
+            print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
+            print(post.to_string())
+            _append_csv(post, POST_CSV)
 
-    print("\n=== Exporting Full Elasticity Matrices ===")
-    elast = export_elasticities(optimal_results, product_data)
-    _append_csv(elast, OUT_DIR / 'elasticities_detail.csv', index=False)
-    print("Saved: elasticities_detail.csv")
+            elast = export_elasticities({label: opt_starts}, product_data)
+            _append_csv(elast, ELAST_CSV, index=False)
+
+            print(f"Saved: multistart_all.csv, multistart_best.csv, "
+                  f"post_estimation_summary.csv, elasticities_detail.csv  [{label}]")
 
 
 if __name__ == '__main__':
