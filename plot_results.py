@@ -54,12 +54,12 @@ def _find(relative: str) -> Path:
 
 def _resolve_paths():
     """Resolve all CSV paths at runtime (not import time) so missing BLP files don't break import."""
-    nevo_csv      = _find('nevo/multistart_all_.csv')
-    blp_csv       = _find('blp/blp_multistart_all_.csv')
-    nevo_elas_csv = _find('nevo/elasticities_detail_.csv')
-    blp_elas_csv  = _find('blp/blp_elasticities_detail_.csv')
+    nevo_csv      = _find('nevo/multistart_all.csv')
+    blp_csv       = _find('blp/blp_multistart_all.csv')
+    nevo_elas_csv = _find('nevo/elasticities_detail.csv')
+    blp_elas_csv  = _find('blp/blp_elasticities_detail.csv')
     return (nevo_csv, blp_csv, nevo_elas_csv, blp_elas_csv,
-            nevo_csv.parent / 'analysis_', blp_csv.parent / 'analysis_')
+            nevo_csv.parent / 'analysis', blp_csv.parent / 'analysis')
 
 # ---------------------------------------------------------------------------
 # Helpers  (mirrors analyze_results.py)
@@ -1205,66 +1205,82 @@ def plot_price_coef_across_sims(rows: list[dict], label: str, out_dir: Path):
 # ---------------------------------------------------------------------------
 
 def main():
-    (NEVO_CSV, BLP_CSV, NEVO_ELAS_CSV, BLP_ELAS_CSV,
-     NEVO_ANALYSIS_DIR, BLP_ANALYSIS_DIR) = _resolve_paths()
+    completed = []
 
-    nevo_rows      = _load(NEVO_CSV)
-    blp_rows       = _load(BLP_CSV)
-    nevo_elas_rows = _load(NEVO_ELAS_CSV)
-    blp_elas_rows  = _load(BLP_ELAS_CSV)
+    # --- BLP figures ---
+    try:
+        blp_csv       = _find('blp/blp_multistart_all.csv')
+        blp_elas_csv  = _find('blp/blp_elasticities_detail.csv')
+        blp_rows      = _load(blp_csv)
+        blp_elas_rows = _load(blp_elas_csv)
+        blp_analysis_dir = blp_csv.parent / 'analysis'
+        print(f'Loaded BLP  multistart:   {len(blp_rows)} rows from {blp_csv}')
+        print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}\n')
 
-    print(f'\nLoaded Nevo multistart:    {len(nevo_rows)} rows')
-    print(f'Loaded BLP  multistart:    {len(blp_rows)} rows')
-    print(f'Loaded Nevo elasticities:  {len(nevo_elas_rows)} rows')
-    print(f'Loaded BLP  elasticities:  {len(blp_elas_rows)} rows\n')
+        print('=== BLP figures ===')
+        plot_objective_ranking(blp_rows,      'BLP',  blp_analysis_dir)
+        plot_price_coef(blp_rows,             'BLP',  blp_analysis_dir)
+        plot_multistart_stability(blp_rows,   'BLP',  blp_analysis_dir)
+        plot_convergence_scatter(blp_rows,    'BLP',  blp_analysis_dir)
+        plot_global_minimum(blp_rows,         'BLP',  blp_analysis_dir)
+        plot_basin_scatter(blp_rows,          'BLP',  blp_analysis_dir)
+        plot_own_elas_boxplot(blp_elas_rows,  blp_rows, 'BLP', blp_analysis_dir)
+        plot_multistart_elas_dotplot(blp_elas_rows,      'BLP', blp_analysis_dir)
+        plot_cross_elas_heatmap(blp_elas_rows, blp_rows, 'BLP', blp_analysis_dir, max_products=24)
+        plot_asymmetry_scatter(blp_elas_rows, blp_rows, 'BLP', blp_analysis_dir)
+        plot_own_stability_heatmap(blp_elas_rows,  blp_rows, 'BLP', blp_analysis_dir)
+        plot_cross_stability_heatmap(blp_elas_rows, blp_rows, 'BLP', blp_analysis_dir)
+        plot_spec_pairwise_mad(blp_elas_rows, blp_rows, 'BLP', blp_analysis_dir)
+        plot_objective_spec_comparison(blp_rows,         'BLP',  blp_analysis_dir)
+        plot_elasticity_pair_across_sims(blp_elas_rows, blp_rows, 'BLP',  blp_analysis_dir)
+        plot_elasticity_pair_best_sim_across_specs(blp_elas_rows, blp_rows, 'BLP',  blp_analysis_dir)
+        plot_price_coef_across_sims(blp_rows,                              'BLP',  blp_analysis_dir)
+        completed.append(blp_analysis_dir)
+    except FileNotFoundError as e:
+        print(f'[WARN] Skipping BLP figures: {e}\n')
 
-    # --- Nevo ---
-    print('=== Nevo figures ===')
-    plot_objective_ranking(nevo_rows,      'NEVO', NEVO_ANALYSIS_DIR)
-    plot_nevo_demographic_expansion(nevo_rows,     NEVO_ANALYSIS_DIR)
-    plot_nevo_x2_comparison(nevo_rows,             NEVO_ANALYSIS_DIR)
-    plot_price_coef(nevo_rows,             'NEVO', NEVO_ANALYSIS_DIR)
-    plot_multistart_stability(nevo_rows,   'NEVO', NEVO_ANALYSIS_DIR)
-    plot_convergence_scatter(nevo_rows,    'NEVO', NEVO_ANALYSIS_DIR)
-    plot_global_minimum(nevo_rows,         'NEVO', NEVO_ANALYSIS_DIR)
-    plot_basin_scatter(nevo_rows,          'NEVO', NEVO_ANALYSIS_DIR)
-    plot_own_elas_boxplot(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_multistart_elas_dotplot(nevo_elas_rows,     'NEVO', NEVO_ANALYSIS_DIR)
-    plot_cross_elas_heatmap(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_asymmetry_scatter(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_nevo_spearman_heatmap(nevo_elas_rows, nevo_rows, NEVO_ANALYSIS_DIR)
-    plot_nevo_firm_substitution_heatmap(nevo_elas_rows, nevo_rows, NEVO_ANALYSIS_DIR)
-    plot_own_stability_heatmap(nevo_elas_rows,  nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_cross_stability_heatmap(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_spec_pairwise_mad(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_objective_spec_comparison(nevo_rows,          'NEVO', NEVO_ANALYSIS_DIR)
-    plot_elasticity_pair_across_sims(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_elasticity_pair_best_sim_across_specs(nevo_elas_rows, nevo_rows, 'NEVO', NEVO_ANALYSIS_DIR)
-    plot_price_coef_across_sims(nevo_rows,                             'NEVO', NEVO_ANALYSIS_DIR)
+    # --- Nevo figures ---
+    try:
+        nevo_csv       = _find('nevo/multistart_all.csv')
+        nevo_elas_csv  = _find('nevo/elasticities_detail.csv')
+        nevo_rows      = _load(nevo_csv)
+        nevo_elas_rows = _load(nevo_elas_csv)
+        nevo_analysis_dir = nevo_csv.parent / 'analysis'
+        print(f'Loaded Nevo multistart:   {len(nevo_rows)} rows from {nevo_csv}')
+        print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}\n')
 
-    # --- BLP ---
-    print('\n=== BLP figures ===')
-    plot_objective_ranking(blp_rows,      'BLP',  BLP_ANALYSIS_DIR)
-    plot_price_coef(blp_rows,             'BLP',  BLP_ANALYSIS_DIR)
-    plot_multistart_stability(blp_rows,   'BLP',  BLP_ANALYSIS_DIR)
-    plot_convergence_scatter(blp_rows,    'BLP',  BLP_ANALYSIS_DIR)
-    plot_global_minimum(blp_rows,         'BLP',  BLP_ANALYSIS_DIR)
-    plot_basin_scatter(blp_rows,          'BLP',  BLP_ANALYSIS_DIR)
-    plot_own_elas_boxplot(blp_elas_rows,  blp_rows, 'BLP', BLP_ANALYSIS_DIR)
-    plot_multistart_elas_dotplot(blp_elas_rows,      'BLP', BLP_ANALYSIS_DIR)
-    plot_cross_elas_heatmap(blp_elas_rows, blp_rows, 'BLP', BLP_ANALYSIS_DIR, max_products=24)
-    plot_asymmetry_scatter(blp_elas_rows, blp_rows, 'BLP', BLP_ANALYSIS_DIR)
-    plot_own_stability_heatmap(blp_elas_rows,  blp_rows, 'BLP', BLP_ANALYSIS_DIR)
-    plot_cross_stability_heatmap(blp_elas_rows, blp_rows, 'BLP', BLP_ANALYSIS_DIR)
-    plot_spec_pairwise_mad(blp_elas_rows, blp_rows, 'BLP', BLP_ANALYSIS_DIR)
-    plot_objective_spec_comparison(blp_rows,         'BLP',  BLP_ANALYSIS_DIR)
-    plot_elasticity_pair_across_sims(blp_elas_rows, blp_rows, 'BLP',  BLP_ANALYSIS_DIR)
-    plot_elasticity_pair_best_sim_across_specs(blp_elas_rows, blp_rows, 'BLP',  BLP_ANALYSIS_DIR)
-    plot_price_coef_across_sims(blp_rows,                              'BLP',  BLP_ANALYSIS_DIR)
+        print('=== Nevo figures ===')
+        plot_objective_ranking(nevo_rows,      'NEVO', nevo_analysis_dir)
+        plot_nevo_demographic_expansion(nevo_rows,     nevo_analysis_dir)
+        plot_nevo_x2_comparison(nevo_rows,             nevo_analysis_dir)
+        plot_price_coef(nevo_rows,             'NEVO', nevo_analysis_dir)
+        plot_multistart_stability(nevo_rows,   'NEVO', nevo_analysis_dir)
+        plot_convergence_scatter(nevo_rows,    'NEVO', nevo_analysis_dir)
+        plot_global_minimum(nevo_rows,         'NEVO', nevo_analysis_dir)
+        plot_basin_scatter(nevo_rows,          'NEVO', nevo_analysis_dir)
+        plot_own_elas_boxplot(nevo_elas_rows, nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_multistart_elas_dotplot(nevo_elas_rows,     'NEVO', nevo_analysis_dir)
+        plot_cross_elas_heatmap(nevo_elas_rows, nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_asymmetry_scatter(nevo_elas_rows, nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_nevo_spearman_heatmap(nevo_elas_rows, nevo_rows, nevo_analysis_dir)
+        plot_nevo_firm_substitution_heatmap(nevo_elas_rows, nevo_rows, nevo_analysis_dir)
+        plot_own_stability_heatmap(nevo_elas_rows,  nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_cross_stability_heatmap(nevo_elas_rows, nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_spec_pairwise_mad(nevo_elas_rows, nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_objective_spec_comparison(nevo_rows,          'NEVO', nevo_analysis_dir)
+        plot_elasticity_pair_across_sims(nevo_elas_rows, nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_elasticity_pair_best_sim_across_specs(nevo_elas_rows, nevo_rows, 'NEVO', nevo_analysis_dir)
+        plot_price_coef_across_sims(nevo_rows,                             'NEVO', nevo_analysis_dir)
+        completed.append(nevo_analysis_dir)
+    except FileNotFoundError as e:
+        print(f'[WARN] Skipping Nevo figures: {e}\n')
 
-    print(f'\nFigures saved to:')
-    print(f'  {NEVO_ANALYSIS_DIR}')
-    print(f'  {BLP_ANALYSIS_DIR}')
+    if completed:
+        print('\nFigures saved to:')
+        for d in completed:
+            print(f'  {d}')
+    else:
+        print('[ERROR] No data found for either dataset. Nothing was plotted.')
 
 
 if __name__ == '__main__':
