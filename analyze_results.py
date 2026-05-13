@@ -1,12 +1,12 @@
 """
 analyze_results.py -- post-hoc analysis of multistart estimation results.
 
-Reads:
-  results/nevo/multistart_all.csv
-  results/nevo/elasticities_detail.csv
-  results/blp/blp_multistart_all.csv
-  results/blp/blp_elasticities_detail.csv
-  (also checks /oak/stanford/groups/polinsky/blp_nevo/... if local files absent)
+Reads (prefers nested csv/ subdir, falls back to flat layout):
+  results/nevo/csv/multistart_all.csv         or  results/nevo/multistart_all.csv
+  results/nevo/csv/elasticities_detail.csv    or  results/nevo/elasticities_detail.csv
+  results/blp/csv/blp_multistart_all.csv      or  results/blp/blp_multistart_all.csv
+  results/blp/csv/blp_elasticities_detail.csv or  results/blp/blp_elasticities_detail.csv
+  (also checks /oak/stanford/groups/polinsky/blp_nevo/... with same precedence)
 
 Outputs analysis tables to stdout covering:
   [Both]  01. Objective ranking across specs
@@ -43,15 +43,27 @@ _OAK_ROOT = Path('/oak/stanford/groups/polinsky/blp_nevo')
 _LOCAL_ROOT = Path(__file__).parent / 'results'
 
 def _find(relative: str) -> Path:
-    local = _LOCAL_ROOT / relative
-    if local.exists():
-        return local
-    oak = _OAK_ROOT / 'results' / relative
-    if oak.exists():
-        return oak
+    """Locate a CSV under <root>/<dataset>/csv/<file> or legacy <root>/<dataset>/<file>.
+
+    `relative` is expected to be '<dataset>/<filename>' (e.g. 'nevo/multistart_all.csv').
+    """
+    dataset, _, filename = relative.partition('/')
+    nested = f'{dataset}/csv/{filename}'
+    for root in (_LOCAL_ROOT, _OAK_ROOT / 'results'):
+        for candidate in (root / nested, root / relative):
+            if candidate.exists():
+                return candidate
     raise FileNotFoundError(
-        f"Cannot find {relative!r} in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
+        f"Cannot find {relative!r} (tried 'csv/' subdir and flat layout) "
+        f"in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
     )
+
+
+def _analysis_dir(csv_path: Path) -> Path:
+    """Return <dataset_root>/analysis/, regardless of csv/ nesting."""
+    parent = csv_path.parent
+    dataset_root = parent.parent if parent.name == 'csv' else parent
+    return dataset_root / 'analysis'
 
 
 # ---------------------------------------------------------------------------
@@ -1173,7 +1185,7 @@ def main():
         blp_elas_csv  = _find('blp/blp_elasticities_detail.csv')
         blp_rows      = _load(blp_csv)
         blp_elas_rows = _load(blp_elas_csv)
-        blp_analysis_dir = blp_csv.parent / 'analysis'
+        blp_analysis_dir = _analysis_dir(blp_csv)
         print(f'Loaded BLP  multistart:   {len(blp_rows)} rows from {blp_csv}')
         print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}\n')
 
@@ -1205,7 +1217,7 @@ def main():
         nevo_elas_csv  = _find('nevo/elasticities_detail.csv')
         nevo_rows      = _load(nevo_csv)
         nevo_elas_rows = _load(nevo_elas_csv)
-        nevo_analysis_dir = nevo_csv.parent / 'analysis'
+        nevo_analysis_dir = _analysis_dir(nevo_csv)
         print(f'Loaded Nevo multistart:   {len(nevo_rows)} rows from {nevo_csv}')
         print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}\n')
 

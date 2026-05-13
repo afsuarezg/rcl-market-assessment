@@ -41,15 +41,27 @@ _LOCAL_ROOT = Path(__file__).parent / 'results'
 
 
 def _find(relative: str) -> Path:
-    local = _LOCAL_ROOT / relative
-    if local.exists():
-        return local
-    oak = _OAK_ROOT / 'results' / relative
-    if oak.exists():
-        return oak
+    """Locate a CSV under <root>/<dataset>/csv/<file> or legacy <root>/<dataset>/<file>.
+
+    `relative` is expected to be '<dataset>/<filename>' (e.g. 'nevo/multistart_all.csv').
+    """
+    dataset, _, filename = relative.partition('/')
+    nested = f'{dataset}/csv/{filename}'
+    for root in (_LOCAL_ROOT, _OAK_ROOT / 'results'):
+        for candidate in (root / nested, root / relative):
+            if candidate.exists():
+                return candidate
     raise FileNotFoundError(
-        f"Cannot find {relative!r} in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
+        f"Cannot find {relative!r} (tried 'csv/' subdir and flat layout) "
+        f"in {_LOCAL_ROOT} or {_OAK_ROOT / 'results'}"
     )
+
+
+def _analysis_dir(csv_path: Path) -> Path:
+    """Return <dataset_root>/analysis/, regardless of csv/ nesting."""
+    parent = csv_path.parent
+    dataset_root = parent.parent if parent.name == 'csv' else parent
+    return dataset_root / 'analysis'
 
 
 def _resolve_paths():
@@ -59,7 +71,7 @@ def _resolve_paths():
     nevo_elas_csv = _find('nevo/elasticities_detail.csv')
     blp_elas_csv  = _find('blp/blp_elasticities_detail.csv')
     return (nevo_csv, blp_csv, nevo_elas_csv, blp_elas_csv,
-            nevo_csv.parent / 'analysis', blp_csv.parent / 'analysis')
+            _analysis_dir(nevo_csv), _analysis_dir(blp_csv))
 
 # ---------------------------------------------------------------------------
 # Helpers  (mirrors analyze_results.py)
@@ -1213,7 +1225,7 @@ def main():
         blp_elas_csv  = _find('blp/blp_elasticities_detail.csv')
         blp_rows      = _load(blp_csv)
         blp_elas_rows = _load(blp_elas_csv)
-        blp_analysis_dir = blp_csv.parent / 'analysis'
+        blp_analysis_dir = _analysis_dir(blp_csv)
         print(f'Loaded BLP  multistart:   {len(blp_rows)} rows from {blp_csv}')
         print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}\n')
 
@@ -1245,7 +1257,7 @@ def main():
         nevo_elas_csv  = _find('nevo/elasticities_detail.csv')
         nevo_rows      = _load(nevo_csv)
         nevo_elas_rows = _load(nevo_elas_csv)
-        nevo_analysis_dir = nevo_csv.parent / 'analysis'
+        nevo_analysis_dir = _analysis_dir(nevo_csv)
         print(f'Loaded Nevo multistart:   {len(nevo_rows)} rows from {nevo_csv}')
         print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}\n')
 
