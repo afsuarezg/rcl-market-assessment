@@ -555,16 +555,15 @@ def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True) -> None:
 
 
 def main(
-    x2_combos: Optional[list[list[str]]] = None,
-    demo_combos: Optional[list[list[str]]] = None,
-    n_starts: Optional[int] = None,
+    x2_combos:    Optional[list[list[str]]] = None,
+    demo_combos:  Optional[list[list[str]]] = None,
+    n_starts:     Optional[int]             = None,
+    target_seeds: int                       = 40,
 ) -> None:
     if x2_combos is None:
         x2_combos = _prompt_combos(_X2_OPTIONS, 'x2')
     if demo_combos is None:
         demo_combos = _prompt_combos(_DEMO_OPTIONS, 'demo')
-    if n_starts is None:
-        n_starts = int(input("\nNumber of random starts per specification: ").strip())
 
     _OAK_ROOT    = Path('/oak/stanford/groups/polinsky/blp_nevo')
     _LOCAL_ROOT  = Path(__file__).parent / 'results'
@@ -580,26 +579,35 @@ def main(
 
     product_data, agent_data = load_data()
 
-    N_STARTS = n_starts
+    existing_seeds_per_spec: dict[str, set[int]] = {}
+    if RAW_ALL_CSV.exists():
+        existing_raw = pd.read_csv(RAW_ALL_CSV, usecols=['spec', 'seed'])
+        existing_raw = existing_raw[existing_raw['seed'].notna()]
+        for spec_label, grp in existing_raw.groupby('spec'):
+            existing_seeds_per_spec[spec_label] = set(grp['seed'].astype(int))
 
     for x2 in x2_combos:
         for demos in demo_combos:
             label = f"x2={x2} | demos={demos}"
 
-            # Resume support: derive base_seed from previously saved raw starts
-            base_seed = 0
-            if RAW_ALL_CSV.exists():
-                existing_raw = pd.read_csv(RAW_ALL_CSV)
-                spec_rows = existing_raw[
-                    (existing_raw['spec'] == label) & existing_raw['seed'].notna()
-                ]
-                if not spec_rows.empty:
-                    base_seed = int(spec_rows['seed'].max()) + 1
+            existing_seeds = existing_seeds_per_spec.get(label, set())
+            n_existing     = len(existing_seeds)
+            base_seed      = max(existing_seeds) + 1 if existing_seeds else 0
+
+            if n_starts is None:
+                n_to_run = max(0, target_seeds - n_existing)
+                if n_to_run == 0:
+                    print(f"\nSkipping {label}: already has {n_existing} unique seeds "
+                          f"(target={target_seeds}).")
+                    continue
+            else:
+                n_to_run = n_starts
 
             # ── Stage 1: multi-start ──────────────────────────────────────────
-            print(f"\nSolving ({N_STARTS} starts): {label}, base_seed={base_seed}")
+            print(f"\nSolving ({n_to_run} starts): {label}, "
+                  f"base_seed={base_seed}, existing={n_existing}/{target_seeds}")
             starts = run_multistart(
-                product_data, agent_data, x2, demos, n_starts=N_STARTS, base_seed=base_seed,
+                product_data, agent_data, x2, demos, n_starts=n_to_run, base_seed=base_seed,
             )
             raw_detail = compare_multistart_results({label: starts})
             _append_csv(raw_detail, RAW_ALL_CSV, index=False)
