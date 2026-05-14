@@ -603,24 +603,28 @@ def main(
     product_data, agent_data = load_data()
 
     N_STARTS = n_starts
+    RAW_ALL_CSV = OUT_DIR / 'blp_multistart_raw_all.csv'
 
     multistart_results = {}
     for x2 in x2_combos:
         for demos in demo_combos:
             label = f"x2={x2} | demos={demos}"
-            all_csv = OUT_DIR / 'blp_multistart_all.csv'
             base_seed = 0
-            if all_csv.exists():
-                existing_all = pd.read_csv(all_csv)
-                spec_rows = existing_all[
-                    (existing_all['spec'] == label) & existing_all['seed'].notna()
+            if RAW_ALL_CSV.exists():
+                existing_raw = pd.read_csv(RAW_ALL_CSV)
+                spec_rows = existing_raw[
+                    (existing_raw['spec'] == label) & existing_raw['seed'].notna()
                 ]
                 if not spec_rows.empty:
                     base_seed = int(spec_rows['seed'].max()) + 1
             print(f"\nSolving ({N_STARTS} starts): {label}, base_seed={base_seed}")
-            multistart_results[label] = run_multistart(
+            starts = run_multistart(
                 product_data, agent_data, x2, demos, n_starts=N_STARTS, base_seed=base_seed,
             )
+            raw_detail = compare_multistart_results({label: starts})
+            _append_csv(raw_detail, RAW_ALL_CSV, index=False)
+            print(f"Saved: blp_multistart_raw_all.csv  [{label}]")
+            multistart_results[label] = starts
 
     optimal_results: dict[str, list[StartResult]] = {}
     for label, starts in multistart_results.items():
