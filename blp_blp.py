@@ -583,16 +583,15 @@ def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True) -> None:
 
 
 def main(
-    x2_combos: Optional[list[list[str]]] = None,
-    demo_combos: Optional[list[list[str]]] = None,
-    n_starts: Optional[int] = None,
+    x2_combos:    Optional[list[list[str]]] = None,
+    demo_combos:  Optional[list[list[str]]] = None,
+    n_starts:     Optional[int]             = None,
+    target_seeds: int                       = 40,
 ) -> None:
     if x2_combos is None:
         x2_combos = _prompt_combos(_X2_OPTIONS, 'x2')
     if demo_combos is None:
         demo_combos = _prompt_combos(_DEMO_OPTIONS, 'demo')
-    if n_starts is None:
-        n_starts = int(input("\nNumber of random starts per specification: ").strip())
 
     _OAK_ROOT    = Path('/oak/stanford/groups/polinsky/blp_nevo')
     _LOCAL_ROOT  = Path(__file__).parent / 'results'
@@ -600,59 +599,73 @@ def main(
     OUT_DIR = _RESULTS_ROOT / 'blp'
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    RAW_ALL_CSV  = OUT_DIR / 'blp_multistart_raw_all.csv'
+    OPT_ALL_CSV  = OUT_DIR / 'blp_multistart_all.csv'
+    OPT_BEST_CSV = OUT_DIR / 'blp_multistart_best.csv'
+    POST_CSV     = OUT_DIR / 'blp_post_estimation_summary.csv'
+    ELAST_CSV    = OUT_DIR / 'blp_elasticities_detail.csv'
+
     product_data, agent_data = load_data()
 
-    N_STARTS = n_starts
-    RAW_ALL_CSV = OUT_DIR / 'blp_multistart_raw_all.csv'
+    existing_seeds_per_spec: dict[str, set[int]] = {}
+    if RAW_ALL_CSV.exists():
+        existing_raw = pd.read_csv(RAW_ALL_CSV, usecols=['spec', 'seed'])
+        existing_raw = existing_raw[existing_raw['seed'].notna()]
+        for spec_label, grp in existing_raw.groupby('spec'):
+            existing_seeds_per_spec[spec_label] = set(grp['seed'].astype(int))
 
-    multistart_results = {}
     for x2 in x2_combos:
         for demos in demo_combos:
             label = f"x2={x2} | demos={demos}"
-            base_seed = 0
-            if RAW_ALL_CSV.exists():
-                existing_raw = pd.read_csv(RAW_ALL_CSV)
-                spec_rows = existing_raw[
-                    (existing_raw['spec'] == label) & existing_raw['seed'].notna()
-                ]
-                if not spec_rows.empty:
-                    base_seed = int(spec_rows['seed'].max()) + 1
-            print(f"\nSolving ({N_STARTS} starts): {label}, base_seed={base_seed}")
+
+            existing_seeds = existing_seeds_per_spec.get(label, set())
+            n_existing     = len(existing_seeds)
+            base_seed      = max(existing_seeds) + 1 if existing_seeds else 0
+
+            if n_starts is None:
+                n_to_run = max(0, target_seeds - n_existing)
+                if n_to_run == 0:
+                    print(f"\nSkipping {label}: already has {n_existing} unique seeds "
+                          f"(target={target_seeds}).")
+                    continue
+            else:
+                n_to_run = n_starts
+
+            # ── Stage 1: multi-start ──────────────────────────────────────────
+            print(f"\nSolving ({n_to_run} starts): {label}, "
+                  f"base_seed={base_seed}, existing={n_existing}/{target_seeds}")
             starts = run_multistart(
-                product_data, agent_data, x2, demos, n_starts=N_STARTS, base_seed=base_seed,
+                product_data, agent_data, x2, demos, n_starts=n_to_run, base_seed=base_seed,
             )
             raw_detail = compare_multistart_results({label: starts})
             _append_csv(raw_detail, RAW_ALL_CSV, index=False)
             print(f"Saved: blp_multistart_raw_all.csv  [{label}]")
-            multistart_results[label] = starts
 
-    optimal_results: dict[str, list[StartResult]] = {}
-    for label, starts in multistart_results.items():
-        print(f"\nApplying optimal instruments: {label}")
-        optimal_results[label] = [apply_optimal_instruments(starts[0])]
+            # ── Stage 2: optimal instruments ─────────────────────────────────
+            print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
+            opt_starts = [apply_optimal_instruments(sr) for sr in starts]
+            opt_starts = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
 
-    detail = compare_multistart_results(optimal_results)
-    print("\n=== All Starts ===")
-    print(detail.to_string(index=False))
-    _append_csv(detail, OUT_DIR / 'blp_multistart_all.csv', index=False)
-    print("Saved: blp_multistart_all.csv")
+            opt_detail = compare_multistart_results({label: opt_starts})
+            print("\n=== All Starts ===")
+            print(opt_detail.to_string(index=False))
+            _append_csv(opt_detail, OPT_ALL_CSV, index=False)
 
-    print("\n=== Best per Specification ===")
-    best = detail[detail['best']].drop(columns='best').set_index('spec')
-    print(best.to_string())
-    _append_csv(best, OUT_DIR / 'blp_multistart_best.csv')
-    print("Saved: blp_multistart_best.csv")
+            opt_best = opt_detail[opt_detail['best']].drop(columns='best').set_index('spec')
+            print("\n=== Best per Specification ===")
+            print(opt_best.to_string())
+            _append_csv(opt_best, OPT_BEST_CSV)
 
-    print("\n=== Post-Estimation: Elasticities, Markups & Merger Simulation ===")
-    post = summarise_post_estimation(optimal_results, product_data)
-    print(post.to_string())
-    _append_csv(post, OUT_DIR / 'blp_post_estimation_summary.csv')
-    print("Saved: blp_post_estimation_summary.csv")
+            post = summarise_post_estimation({label: opt_starts}, product_data)
+            print("\n=== Post-Estimation: Elasticities, Markups & Merger Simulation ===")
+            print(post.to_string())
+            _append_csv(post, POST_CSV)
 
-    print("\n=== Exporting Full Elasticity Matrices ===")
-    elast = export_elasticities(optimal_results, product_data)
-    _append_csv(elast, OUT_DIR / 'blp_elasticities_detail.csv', index=False)
-    print("Saved: blp_elasticities_detail.csv")
+            elast = export_elasticities({label: opt_starts}, product_data)
+            _append_csv(elast, ELAST_CSV, index=False)
+
+            print(f"Saved: blp_multistart_all.csv, blp_multistart_best.csv, "
+                  f"blp_post_estimation_summary.csv, blp_elasticities_detail.csv  [{label}]")
 
 
 if __name__ == '__main__':
