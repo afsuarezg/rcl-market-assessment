@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 
-NEVO_DIR = Path(__file__).parent / "results" / "nevo"
+NEVO_DIR = Path(__file__).parent / "results" / "nevo" / "csv"
 
 
 def summarize(csv_path: Path, label: str) -> pd.DataFrame:
