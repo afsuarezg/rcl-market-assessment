@@ -129,6 +129,43 @@ def _short(spec: str, max_len: int = 34) -> str:
     return textwrap.fill(s, max_len)
 
 
+def _numeric_seed_sort(seeds):
+    """Return (sorted_seeds, perm).
+
+    `perm[i]` is the original index of the i-th seed in numerically sorted
+    order. Non-numeric seeds sort after numeric ones in lexicographic order.
+    Callers can use `perm` to reorder aligned data lists (pcoefs, colors, …).
+    """
+    def key(i):
+        try:
+            return (0, int(seeds[i]))
+        except (ValueError, TypeError):
+            return (1, seeds[i])
+    perm = sorted(range(len(seeds)), key=key)
+    return [seeds[i] for i in perm], perm
+
+
+def _set_sparse_seed_xaxis(ax, sorted_seeds, *, target_ticks: int = 10,
+                           fontsize: int = 8):
+    """Configure `ax` with ~target_ticks evenly-spaced numeric seed ticks.
+
+    Caller must have already applied the same seed ordering to the plotted
+    data (typically via `_numeric_seed_sort`).
+    """
+    n = len(sorted_seeds)
+    if n == 0:
+        return
+    step = max(1, math.ceil(n / target_ticks))
+    idx  = list(range(0, n, step))
+    if idx[-1] != n - 1:
+        idx.append(n - 1)
+    ax.set_xticks(idx)
+    ax.set_xticklabels([sorted_seeds[i] for i in idx],
+                       rotation=0, ha='center', fontsize=fontsize)
+    ax.set_xlabel('Seed (numerically ordered; intermediate ticks hidden)',
+                  fontsize=9)
+
+
 def _vshort_spec(spec: str) -> str:
     """Single-line condensed spec label for compact key listings."""
     s = spec.replace("x2=", "").replace("demos=", "").replace(" | ", " · ")
@@ -177,7 +214,9 @@ def _heatmap_annot_kws(n: int) -> dict:
     return {'size': max(5, 10 - n // 6)}
 
 
-def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60):
+def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60, *,
+                               colors=None, mean_color=None,
+                               add_legend: bool = True):
     """Scatter with y-axis clipped to Tukey 3*IQR bounds.
 
     Points outside [Q1 - 3*IQR, Q3 + 3*IQR] render as triangles at the panel
@@ -186,13 +225,24 @@ def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60):
     pulled by outliers. NaN ys are dropped. With fewer than 6 points or a
     zero IQR, no clipping is applied and behavior matches a plain scatter
     plus mean line.
+
+    Optional kwargs:
+      colors:     per-point colour list aligned with xs/ys. Overrides
+                  `color` for inlier scatter and outlier triangle fills.
+      mean_color: colour for the dashed reference line (defaults to `color`).
+      add_legend: when False the helper still draws the mean line and sets
+                  its label but skips ax.legend(), so callers can compose a
+                  custom legend using the returned handle.
+
+    Returns the dashed mean Line2D (or None when there are no inliers).
     """
-    pts = [(x, y) for x, y in zip(xs, ys)
+    pts = [(x, y, c) for x, y, c in zip(xs, ys,
+                                        colors if colors is not None else [color] * len(xs))
            if not (isinstance(y, float) and math.isnan(y))]
     if not pts:
-        return
+        return None
 
-    yvals = [y for _, y in pts]
+    yvals = [y for _, y, _ in pts]
     n = len(yvals)
     s = sorted(yvals)
     if n >= 6:
@@ -208,23 +258,26 @@ def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60):
     else:
         lo = q1 - 3.0 * iqr
         hi = q3 + 3.0 * iqr
-        inliers  = [(x, y) for x, y in pts if lo <= y <= hi]
-        outliers = [(x, y) for x, y in pts if y < lo or y > hi]
+        inliers  = [p for p in pts if lo <= p[1] <= hi]
+        outliers = [p for p in pts if p[1] < lo or p[1] > hi]
 
+    mean_line = None
     if inliers:
-        ix, iy = zip(*inliers)
-        ax.scatter(ix, iy, color=color, s=marker_size, zorder=3)
+        ix = [p[0] for p in inliers]
+        iy = [p[1] for p in inliers]
+        ic = [p[2] for p in inliers]
+        ax.scatter(ix, iy, c=ic, s=marker_size, zorder=3)
         mean_v = sum(iy) / len(iy)
-        if outliers:
-            label = f'mean(inliers, n={len(inliers)}/{n})={mean_v:.4f}'
-        else:
-            label = f'mean={mean_v:.4f}'
-        ax.axhline(mean_v, color=color, linewidth=1.2, linestyle='--',
-                   alpha=0.7, label=label)
-        ax.legend(fontsize=8, loc='best')
+        label  = (f'mean(inliers, n={len(inliers)}/{n})={mean_v:.4f}'
+                  if outliers else f'mean={mean_v:.4f}')
+        mean_line = ax.axhline(mean_v, color=(mean_color or color),
+                               linewidth=1.2, linestyle='--', alpha=0.85,
+                               label=label)
+        if add_legend:
+            ax.legend(fontsize=8, loc='best')
 
     if not outliers:
-        return
+        return mean_line
 
     rng = hi - lo if hi > lo else max(abs(hi), 1.0)
     pad = 0.05 * rng
@@ -232,9 +285,9 @@ def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60):
 
     y_top    = hi + pad * 0.5
     y_bottom = lo - pad * 0.5
-    for x, y in outliers:
+    for x, y, c in outliers:
         if y > hi:
-            ax.scatter([x], [y_top], marker='^', color=color,
+            ax.scatter([x], [y_top], marker='^', color=c,
                        s=marker_size + 20, edgecolor='black', linewidth=0.8,
                        zorder=5, clip_on=False)
             ax.annotate(f'{y:.2f}', xy=(x, y_top),
@@ -244,7 +297,7 @@ def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60):
                         bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
                                   edgecolor='none', alpha=0.75))
         else:
-            ax.scatter([x], [y_bottom], marker='v', color=color,
+            ax.scatter([x], [y_bottom], marker='v', color=c,
                        s=marker_size + 20, edgecolor='black', linewidth=0.8,
                        zorder=5, clip_on=False)
             ax.annotate(f'{y:.2f}', xy=(x, y_bottom),
@@ -253,6 +306,7 @@ def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60):
                         zorder=6,
                         bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
                                   edgecolor='none', alpha=0.75))
+    return mean_line
 
 
 # ---------------------------------------------------------------------------
@@ -1134,22 +1188,10 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
         elif pj == prod_k and pk == prod_j:
             seeds_data[seed]['e_kj'] = val
 
-    def _seed_key(s):
-        try:
-            return (0, int(s))
-        except (ValueError, TypeError):
-            return (1, s)
-    sorted_seeds = sorted(seeds_data, key=_seed_key)
+    sorted_seeds, _ = _numeric_seed_sort(list(seeds_data))
     if not sorted_seeds:
         print(f'  [{label}] No seed data — skipping 20_elasticity_pair_across_sims.png')
         return
-
-    # Show ~10 evenly-spaced tick labels (keep all scatter points, just thin labels)
-    n_seeds   = len(sorted_seeds)
-    tick_step = max(1, math.ceil(n_seeds / 10))
-    tick_idx  = list(range(0, n_seeds, tick_step))
-    if tick_idx[-1] != n_seeds - 1:
-        tick_idx.append(n_seeds - 1)
 
     panel_info = [
         ('e_jj', f'Own-price: {prod_j}',    COL_BASIN_A),
@@ -1166,10 +1208,7 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
         xs   = list(range(len(sorted_seeds)))
         _clip_with_outlier_markers(ax, xs, vals, color, marker_size=60)
 
-        ax.set_xticks(tick_idx)
-        ax.set_xticklabels([sorted_seeds[i] for i in tick_idx],
-                           rotation=0, ha='center', fontsize=8)
-        ax.set_xlabel('Seed (numerically ordered; intermediate ticks hidden)', fontsize=9)
+        _set_sparse_seed_xaxis(ax, sorted_seeds)
         ax.set_ylabel('Elasticity', fontsize=9)
         ax.set_title(title, fontweight='bold', fontsize=9)
         ax.grid(axis='y', linewidth=0.4, alpha=0.5)
@@ -1312,38 +1351,43 @@ def plot_price_coef_across_sims(rows: list[dict], label: str, out_dir: Path):
 
     best_spec = min(by_spec,
                     key=lambda s: sum(float(r['objective']) for r in by_spec[s]) / len(by_spec[s]))
-    spec_rows = sorted(by_spec[best_spec], key=lambda r: r['seed'])
+    spec_rows = by_spec[best_spec]
 
-    seeds  = [r['seed'] for r in spec_rows]
-    pcoefs = [float(r['price_coef']) for r in spec_rows]
-    valid  = [_valid(r) for r in spec_rows]
-    colors = [COL_VALID if v else COL_INVALID for v in valid]
-    xs     = list(range(len(seeds)))
+    raw_seeds    = [r['seed'] for r in spec_rows]
+    raw_pcoefs   = [float(r['price_coef']) for r in spec_rows]
+    raw_colors   = [COL_VALID if _valid(r) else COL_INVALID for r in spec_rows]
 
-    mean_pc    = sum(pcoefs) / len(pcoefs)
+    sorted_seeds, perm = _numeric_seed_sort(raw_seeds)
+    pcoefs       = [raw_pcoefs[i]  for i in perm]
+    point_colors = [raw_colors[i]  for i in perm]
+    xs           = list(range(len(sorted_seeds)))
+
     short_spec = _short(best_spec, 70)
 
     from matplotlib.patches import Patch
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.scatter(xs, pcoefs, c=colors, s=70, zorder=3)
-    ax.axhline(mean_pc, color='#444', linewidth=1.2, linestyle='--',
-               label=f'mean={mean_pc:.4f}')
+    mean_line = _clip_with_outlier_markers(
+        ax, xs, pcoefs, color=COL_VALID, marker_size=70,
+        colors=point_colors, mean_color='#444', add_legend=False)
     ax.axhline(0, color='black', linewidth=0.8, linestyle=':')
-    ax.set_xticks(xs)
-    ax.set_xticklabels(seeds, rotation=45, ha='right', fontsize=8)
-    ax.set_xlabel('Seed', fontsize=9)
+
+    _set_sparse_seed_xaxis(ax, sorted_seeds)
     ax.set_ylabel('Price coefficient (α)', fontsize=9)
     ax.set_title('Price coefficient per simulation', fontweight='bold', fontsize=9)
     ax.grid(axis='y', linewidth=0.4, alpha=0.5)
-    ax.legend(handles=[
-        ax.lines[0],
+
+    legend_handles = [
         Patch(color=COL_VALID,   label='valid (α < 0)'),
         Patch(color=COL_INVALID, label='invalid (α ≥ 0)'),
-    ], fontsize=8, loc='best')
+    ]
+    if mean_line is not None:
+        legend_handles.insert(0, mean_line)
+    ax.legend(handles=legend_handles, fontsize=8, loc='best')
 
     fig.suptitle(f'{label} — Price coefficient across simulations\nSpec: {short_spec}',
                  fontweight='bold', fontsize=9, y=1.01)
-    _footer(fig, f'{label} · Analysis 22 · Price coef per simulation for best-mean-obj spec')
+    _footer(fig, f'{label} · Analysis 22 · Price coef per simulation for best-mean-obj spec'
+                 f' · outliers (outside Q1−3·IQR, Q3+3·IQR) shown as labeled edge triangles')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '22_price_coef_across_sims.png')
 
