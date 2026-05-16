@@ -105,9 +105,15 @@ def _run_and_save(out_dir: Path, filename: str, func, *args):
 
 
 def _valid(row: dict) -> bool:
-    """Economically valid demand estimate: price coefficient must be negative."""
+    """Economically and numerically valid demand estimate.
+
+    Requires a negative price coefficient (economic sign) AND a non-negative
+    GMM objective (the canonical g'Wg is PSD; negative values are numerical
+    failures from a non-converged inner loop or ill-conditioned weighting
+    matrix and would otherwise be picked as spurious 'best' starts).
+    """
     try:
-        return float(row['price_coef']) < 0
+        return float(row['price_coef']) < 0 and float(row['objective']) >= 0
     except (ValueError, TypeError):
         return False
 
@@ -217,21 +223,36 @@ def multistart_stability(rows: list[dict], label: str = ''):
 
 
 def convergence_audit(rows: list[dict], label: str = ''):
-    _header(f'{label} -- Convergence audit (valid = price_coef < 0)')
+    _header(f'{label} -- Convergence audit (valid = price_coef < 0 AND objective >= 0)')
     print(f'  {"Spec":<40}  {"Seed":>6}  {"Start":>6}  {"GMM obj":>10}  {"price_coef":>12}  {"Valid?":>7}  {"Best flag":>9}')
     _sep()
+
+    def _reason(r):
+        try:
+            bad_alpha = float(r['price_coef']) >= 0
+            bad_obj   = float(r['objective']) < 0
+        except (ValueError, TypeError):
+            return '  ** INVALID (unparseable) **'
+        flags = []
+        if bad_alpha: flags.append('alpha >= 0')
+        if bad_obj:   flags.append('objective < 0')
+        return '  ** INVALID (' + ', '.join(flags) + ') **' if flags else ''
+
     for r in rows:
         valid = _valid(r)
-        marker = '  OK' if valid else '  ** INVALID (alpha > 0) **'
+        marker = '  OK' if valid else _reason(r)
         print(
             f'  {r["spec"]:<40}  {r["seed"]:>6}  {r["start"]:>6}  {float(r["objective"]):>10.4f}'
             f'  {float(r["price_coef"]):>12.4f}  {str(valid):>7}  {r["best"]:>9}{marker}'
         )
-    valid_rows = [r for r in rows if _valid(r)]
+    valid_rows   = [r for r in rows if _valid(r)]
     invalid_rows = [r for r in rows if not _valid(r)]
+    n_bad_alpha  = sum(1 for r in rows if not _valid(r) and float(r.get('price_coef', 0) or 0) >= 0)
+    n_bad_obj    = sum(1 for r in rows if not _valid(r) and float(r.get('objective', 0) or 0) < 0)
     print()
     print(f'  Valid starts:   {len(valid_rows)} / {len(rows)}')
-    print(f'  Invalid starts: {len(invalid_rows)} / {len(rows)} (price_coef > 0 => economically invalid)')
+    print(f'  Invalid starts: {len(invalid_rows)} / {len(rows)}'
+          f'   (alpha >= 0: {n_bad_alpha}, objective < 0: {n_bad_obj})')
     print()
 
 

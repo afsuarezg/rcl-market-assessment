@@ -83,8 +83,13 @@ def _load(path: Path) -> list[dict]:
 
 
 def _valid(row: dict) -> bool:
+    """Mirror of analyze_results._valid: require price_coef < 0 AND objective >= 0.
+
+    Negative GMM objectives are numerical failures (g'Wg is PSD); excluding
+    them prevents `_best_per_spec` from picking a spurious 'best' start.
+    """
     try:
-        return float(row['price_coef']) < 0
+        return float(row['price_coef']) < 0 and float(row['objective']) >= 0
     except (ValueError, TypeError):
         return False
 
