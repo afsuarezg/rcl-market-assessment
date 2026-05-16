@@ -124,6 +124,36 @@ def _short(spec: str, max_len: int = 34) -> str:
     return textwrap.fill(s, max_len)
 
 
+def _vshort_spec(spec: str) -> str:
+    """Single-line condensed spec label for compact key listings."""
+    s = spec.replace("x2=", "").replace("demos=", "").replace(" | ", " · ")
+    return s.replace("['", "[").replace("']", "]").replace("', '", ",")
+
+
+def _spec_key_text(labels: list[str]) -> tuple[str, int]:
+    """Format a numbered spec key as multi-column monospaced text.
+
+    Picks 1/2/3 columns based on length so the block stays readable.
+    Returns (text, n_rows) so callers can budget figure space.
+    """
+    n = len(labels)
+    if n == 0:
+        return '', 0
+    n_cols = 1 if n <= 4 else (2 if n <= 12 else 3)
+    n_rows = math.ceil(n / n_cols)
+    entries = [f'{i + 1:>2}. {labels[i]}' for i in range(n)]
+    col_w = max(len(e) for e in entries) + 3
+    out = []
+    for r in range(n_rows):
+        parts = []
+        for c in range(n_cols):
+            idx = c * n_rows + r
+            if idx < n:
+                parts.append(f'{entries[idx]:<{col_w}}')
+        out.append(''.join(parts).rstrip())
+    return '\n'.join(out), n_rows
+
+
 def _savefig(fig: plt.Figure, out_dir: Path, filename: str):
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / filename
@@ -140,6 +170,84 @@ def _footer(fig: plt.Figure, text: str):
 def _heatmap_annot_kws(n: int) -> dict:
     """Scale annotation font size with matrix size."""
     return {'size': max(5, 10 - n // 6)}
+
+
+def _clip_with_outlier_markers(ax, xs, ys, color, marker_size: int = 60):
+    """Scatter with y-axis clipped to Tukey 3*IQR bounds.
+
+    Points outside [Q1 - 3*IQR, Q3 + 3*IQR] render as triangles at the panel
+    edge with the actual numeric value annotated. The dashed reference line
+    shows the mean of inliers only, so it tracks the bulk rather than being
+    pulled by outliers. NaN ys are dropped. With fewer than 6 points or a
+    zero IQR, no clipping is applied and behavior matches a plain scatter
+    plus mean line.
+    """
+    pts = [(x, y) for x, y in zip(xs, ys)
+           if not (isinstance(y, float) and math.isnan(y))]
+    if not pts:
+        return
+
+    yvals = [y for _, y in pts]
+    n = len(yvals)
+    s = sorted(yvals)
+    if n >= 6:
+        q1  = s[n // 4]
+        q3  = s[(3 * n) // 4]
+        iqr = q3 - q1
+    else:
+        q1 = q3 = iqr = 0.0
+
+    if n < 6 or iqr <= 0:
+        inliers, outliers = pts, []
+        lo, hi = min(yvals), max(yvals)
+    else:
+        lo = q1 - 3.0 * iqr
+        hi = q3 + 3.0 * iqr
+        inliers  = [(x, y) for x, y in pts if lo <= y <= hi]
+        outliers = [(x, y) for x, y in pts if y < lo or y > hi]
+
+    if inliers:
+        ix, iy = zip(*inliers)
+        ax.scatter(ix, iy, color=color, s=marker_size, zorder=3)
+        mean_v = sum(iy) / len(iy)
+        if outliers:
+            label = f'mean(inliers, n={len(inliers)}/{n})={mean_v:.4f}'
+        else:
+            label = f'mean={mean_v:.4f}'
+        ax.axhline(mean_v, color=color, linewidth=1.2, linestyle='--',
+                   alpha=0.7, label=label)
+        ax.legend(fontsize=8, loc='best')
+
+    if not outliers:
+        return
+
+    rng = hi - lo if hi > lo else max(abs(hi), 1.0)
+    pad = 0.05 * rng
+    ax.set_ylim(lo - pad, hi + pad)
+
+    y_top    = hi + pad * 0.5
+    y_bottom = lo - pad * 0.5
+    for x, y in outliers:
+        if y > hi:
+            ax.scatter([x], [y_top], marker='^', color=color,
+                       s=marker_size + 20, edgecolor='black', linewidth=0.8,
+                       zorder=5, clip_on=False)
+            ax.annotate(f'{y:.2f}', xy=(x, y_top),
+                        xytext=(0, -10), textcoords='offset points',
+                        ha='center', va='top', fontsize=7, color='black',
+                        zorder=6,
+                        bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
+                                  edgecolor='none', alpha=0.75))
+        else:
+            ax.scatter([x], [y_bottom], marker='v', color=color,
+                       s=marker_size + 20, edgecolor='black', linewidth=0.8,
+                       zorder=5, clip_on=False)
+            ax.annotate(f'{y:.2f}', xy=(x, y_bottom),
+                        xytext=(0, 10), textcoords='offset points',
+                        ha='center', va='bottom', fontsize=7, color='black',
+                        zorder=6,
+                        bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
+                                  edgecolor='none', alpha=0.75))
 
 
 # ---------------------------------------------------------------------------
@@ -1021,10 +1129,22 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
         elif pj == prod_k and pk == prod_j:
             seeds_data[seed]['e_kj'] = val
 
-    sorted_seeds = sorted(seeds_data)
+    def _seed_key(s):
+        try:
+            return (0, int(s))
+        except (ValueError, TypeError):
+            return (1, s)
+    sorted_seeds = sorted(seeds_data, key=_seed_key)
     if not sorted_seeds:
         print(f'  [{label}] No seed data — skipping 20_elasticity_pair_across_sims.png')
         return
+
+    # Show ~10 evenly-spaced tick labels (keep all scatter points, just thin labels)
+    n_seeds   = len(sorted_seeds)
+    tick_step = max(1, math.ceil(n_seeds / 10))
+    tick_idx  = list(range(0, n_seeds, tick_step))
+    if tick_idx[-1] != n_seeds - 1:
+        tick_idx.append(n_seeds - 1)
 
     panel_info = [
         ('e_jj', f'Own-price: {prod_j}',    COL_BASIN_A),
@@ -1037,21 +1157,14 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
     axes = axes.flatten()
 
     for ax, (key, title, color) in zip(axes, panel_info):
-        vals  = [seeds_data[s].get(key, float('nan')) for s in sorted_seeds]
-        xs    = list(range(len(sorted_seeds)))
-        valid = [(x, v) for x, v in zip(xs, vals) if not math.isnan(v)]
+        vals = [seeds_data[s].get(key, float('nan')) for s in sorted_seeds]
+        xs   = list(range(len(sorted_seeds)))
+        _clip_with_outlier_markers(ax, xs, vals, color, marker_size=60)
 
-        if valid:
-            vx, vy = zip(*valid)
-            ax.scatter(vx, vy, color=color, s=60, zorder=3)
-            mean_v = sum(vy) / len(vy)
-            ax.axhline(mean_v, color=color, linewidth=1.2, linestyle='--', alpha=0.7,
-                       label=f'mean={mean_v:.4f}')
-            ax.legend(fontsize=8, loc='best')
-
-        ax.set_xticks(xs)
-        ax.set_xticklabels(sorted_seeds, rotation=45, ha='right', fontsize=8)
-        ax.set_xlabel('Seed', fontsize=9)
+        ax.set_xticks(tick_idx)
+        ax.set_xticklabels([sorted_seeds[i] for i in tick_idx],
+                           rotation=0, ha='center', fontsize=8)
+        ax.set_xlabel('Seed (numerically ordered; intermediate ticks hidden)', fontsize=9)
         ax.set_ylabel('Elasticity', fontsize=9)
         ax.set_title(title, fontweight='bold', fontsize=9)
         ax.grid(axis='y', linewidth=0.4, alpha=0.5)
@@ -1060,7 +1173,8 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
     fig.suptitle(f'{label} — Elasticity pair across simulations\n'
                  f'Spec: {short_spec}\nPair  j={prod_j}, k={prod_k}',
                  fontweight='bold', fontsize=9, y=1.01)
-    _footer(fig, f'{label} · Analysis 20 · 4 elasticities for selected pair across all seeds of best-mean-obj spec')
+    _footer(fig, f'{label} · Analysis 20 · 4 elasticities for selected pair across all seeds of best-mean-obj spec'
+                 f' · outliers (outside Q1−3·IQR, Q3+3·IQR) shown as labeled edge triangles')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '20_elasticity_pair_across_sims.png')
 
@@ -1118,14 +1232,15 @@ def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: 
                 vals['e_jk'] = v
             elif pj == prod_k and pk == prod_j:
                 vals['e_kj'] = v
-        spec_vals.append((_short(spec, 30), vals))
+        spec_vals.append((spec, _short(spec, 30), vals))
 
     if not spec_vals:
         print(f'  [{label}] No data after filtering — skipping 21_elasticity_pair_best_sim_across_specs.png')
         return
 
-    short_specs = [sv[0] for sv in spec_vals]
-    xs = list(range(len(spec_vals)))
+    full_specs  = [sv[0] for sv in spec_vals]
+    short_specs = [sv[1] for sv in spec_vals]
+    xs          = list(range(len(spec_vals)))
 
     panel_info = [
         ('e_jj', f'Own-price: {prod_j}',         COL_BASIN_A),
@@ -1134,24 +1249,35 @@ def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: 
         ('e_kj', f'Cross-price: {prod_k}→{prod_j}', PALETTE[5]),
     ]
 
-    fig, axes = plt.subplots(2, 2, figsize=(11, 7), sharey=False)
+    # For >4 specs, swap multi-line spec labels for rank numbers and add a
+    # numbered key below the figure so the rank → spec mapping stays visible.
+    use_ranks = len(spec_vals) > 4
+    if use_ranks:
+        key_text, key_rows = _spec_key_text([_vshort_spec(s) for s in full_specs])
+        # Reserve vertical space proportional to the key (≈ 0.018 figure-frac per row)
+        bottom_rect = min(0.45, 0.06 + 0.022 * key_rows)
+        fig_height  = 7 + 0.22 * key_rows
+    else:
+        key_text, key_rows = '', 0
+        bottom_rect = 0.05
+        fig_height  = 7
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, fig_height), sharey=False)
     axes = axes.flatten()
 
     for ax, (key, title, color) in zip(axes, panel_info):
-        vals  = [sv[1].get(key, float('nan')) for sv in spec_vals]
-        valid = [(x, v) for x, v in zip(xs, vals) if not math.isnan(v)]
-
-        if valid:
-            vx, vy = zip(*valid)
-            ax.scatter(vx, vy, color=color, s=70, zorder=3)
-            mean_v = sum(vy) / len(vy)
-            ax.axhline(mean_v, color=color, linewidth=1.2, linestyle='--', alpha=0.7,
-                       label=f'mean={mean_v:.4f}')
-            ax.legend(fontsize=8, loc='best')
+        vals = [sv[2].get(key, float('nan')) for sv in spec_vals]
+        _clip_with_outlier_markers(ax, xs, vals, color, marker_size=70)
 
         ax.set_xticks(xs)
-        ax.set_xticklabels(short_specs, rotation=40, ha='right', fontsize=7)
-        ax.set_xlabel('Specification (ranked by best objective)', fontsize=8)
+        if use_ranks:
+            ax.set_xticklabels([str(i + 1) for i in xs], rotation=0,
+                               ha='center', fontsize=9)
+            ax.set_xlabel('Spec rank (best objective ascending — see key below)',
+                          fontsize=8)
+        else:
+            ax.set_xticklabels(short_specs, rotation=40, ha='right', fontsize=7)
+            ax.set_xlabel('Specification (ranked by best objective)', fontsize=8)
         ax.set_ylabel('Elasticity', fontsize=9)
         ax.set_title(title, fontweight='bold', fontsize=9)
         ax.grid(axis='y', linewidth=0.4, alpha=0.5)
@@ -1159,8 +1285,13 @@ def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: 
     fig.suptitle(f'{label} — Elasticity pair: best simulation per spec\n'
                  f'Pair  j={prod_j}, k={prod_k}  ·  one point = best seed of each spec',
                  fontweight='bold', fontsize=9, y=1.01)
-    _footer(fig, f'{label} · Analysis 21 · 4 elasticities for selected pair, best-seed per spec, sorted by objective')
-    plt.tight_layout(rect=[0, 0.03, 1, 1])
+    _footer(fig, f'{label} · Analysis 21 · 4 elasticities for selected pair, best-seed per spec, sorted by objective'
+                 f' · outliers (outside Q1−3·IQR, Q3+3·IQR) shown as labeled edge triangles')
+    if key_text:
+        # Position the key just above the footer
+        fig.text(0.5, 0.035, key_text, ha='center', va='bottom',
+                 fontsize=7, family='monospace', color='black')
+    plt.tight_layout(rect=[0, bottom_rect, 1, 1])
     _savefig(fig, out_dir, '21_elasticity_pair_best_sim_across_specs.png')
 
 
