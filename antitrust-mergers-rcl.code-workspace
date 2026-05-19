@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "rcl_synthetic_data",
+			"path": "../rcl_synthetic_data"
+		},
+		{
+			"name": "rcl-market-assessment",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

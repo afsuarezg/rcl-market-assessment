@@ -12,6 +12,9 @@
       "Bash(find results:*)",
       "Bash(.venv/Scripts/python analyze_results.py)",
       "Bash(find C:UsersAndres.DESKTOP-D77KM25Documentsrcl_market_assessmentresults -type f -name *.csv)"
+    ],
+    "additionalDirectories": [
+      "/Users/andres/Documents/Mergers RCL/rcl_synthetic_data"
     ]
   }
 }
