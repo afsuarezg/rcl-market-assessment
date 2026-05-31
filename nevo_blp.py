@@ -524,6 +524,20 @@ def export_elasticities(
 # 12. Script entry point — grid over specifications
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _nevo_out_dir(results_root: Path) -> Path:
+    """Resolve where nevo CSVs live: the canonical csv/ subdir, unless only the
+    legacy flat dir already holds accumulated data (e.g. older cluster runs).
+
+    This keeps top-up runs appending to the existing history wherever it sits,
+    instead of silently starting a fresh file in a different directory.
+    """
+    nevo = results_root / 'nevo'
+    if (nevo / 'multistart_all.csv').exists() \
+            and not (nevo / 'csv' / 'multistart_all.csv').exists():
+        return nevo
+    return nevo / 'csv'
+
+
 def _all_nonempty_subsets(items: list[str]) -> list[list[str]]:
     return [list(s) for r in range(1, len(items) + 1) for s in combinations(items, r)]
 
@@ -568,7 +582,10 @@ def main(
     _OAK_ROOT    = Path('/oak/stanford/groups/polinsky/blp_nevo')
     _LOCAL_ROOT  = Path(__file__).parent / 'results'
     _RESULTS_ROOT = _OAK_ROOT / 'results' if _OAK_ROOT.exists() else _LOCAL_ROOT
-    OUT_DIR = _RESULTS_ROOT / 'nevo'
+    # Write where the accumulated data already lives so top-up runs append to it
+    # (canonical csv/ subdir read by count_seeds_per_spec.py / analyze_results.py /
+    # plot_results.py, with a fallback to the legacy flat dir).
+    OUT_DIR = _nevo_out_dir(_RESULTS_ROOT)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     RAW_ALL_CSV  = OUT_DIR / 'multistart_raw_all.csv'
@@ -579,20 +596,32 @@ def main(
 
     product_data, agent_data = load_data()
 
-    existing_seeds_per_spec: dict[str, set[int]] = {}
-    if RAW_ALL_CSV.exists():
-        existing_raw = pd.read_csv(RAW_ALL_CSV, usecols=['spec', 'seed'])
-        existing_raw = existing_raw[existing_raw['seed'].notna()]
-        for spec_label, grp in existing_raw.groupby('spec'):
-            existing_seeds_per_spec[spec_label] = set(grp['seed'].astype(int))
+    def _seeds_by_spec(path: Path) -> dict[str, set[int]]:
+        out: dict[str, set[int]] = {}
+        if path.exists():
+            df = pd.read_csv(path, usecols=['spec', 'seed'])
+            df = df[df['seed'].notna()]
+            for spec_label, grp in df.groupby('spec'):
+                out[spec_label] = set(grp['seed'].astype(int))
+        return out
+
+    # Count against converged seeds (OPT_ALL_CSV / multistart_all.csv): a start
+    # that solves in stage 1 but fails the optimal-instruments re-solve never
+    # reaches multistart_all.csv, so counting raw stage-1 seeds would mark a spec
+    # "done" while it is still short of the target there.
+    converged_seeds_per_spec = _seeds_by_spec(OPT_ALL_CSV)
+    # Attempted seeds (RAW_ALL_CSV) are unioned in only to pick a collision-free
+    # base_seed, never to count progress toward the target.
+    attempted_seeds_per_spec = _seeds_by_spec(RAW_ALL_CSV)
 
     for x2 in x2_combos:
         for demos in demo_combos:
             label = f"x2={x2} | demos={demos}"
 
-            existing_seeds = existing_seeds_per_spec.get(label, set())
+            existing_seeds = converged_seeds_per_spec.get(label, set())
             n_existing     = len(existing_seeds)
-            base_seed      = max(existing_seeds) + 1 if existing_seeds else 0
+            used_seeds     = existing_seeds | attempted_seeds_per_spec.get(label, set())
+            base_seed      = max(used_seeds) + 1 if used_seeds else 0
 
             if n_starts is None:
                 n_to_run = max(0, target_seeds - n_existing)
@@ -615,7 +644,17 @@ def main(
 
             # ── Stage 2: optimal instruments ─────────────────────────────────
             print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
-            opt_starts = [apply_optimal_instruments(sr) for sr in starts]
+            opt_starts = []
+            for sr in starts:
+                try:
+                    opt_starts.append(apply_optimal_instruments(sr))
+                except Exception as exc:
+                    print(f"  [skip] stage-2 optimal IV failed for seed={sr.seed}: "
+                          f"{type(exc).__name__}: {exc}")
+            if not opt_starts:
+                print(f"All stage-2 solves failed for {label}; "
+                      f"skipping downstream outputs.")
+                continue
             opt_starts = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
 
             opt_detail = compare_multistart_results({label: opt_starts})
@@ -641,6 +680,37 @@ def main(
 
 
 if __name__ == '__main__':
-    main(x2_combos=[['sugar']], 
-    demo_combos=[['income', 'age']],
-    n_starts=12)
+    import ast
+
+    TARGET_SEEDS = 40
+
+    # Resolve the same canonical csv/ directory main() writes to.
+    _OAK_ROOT     = Path('/oak/stanford/groups/polinsky/blp_nevo')
+    _LOCAL_ROOT   = Path(__file__).parent / 'results'
+    _RESULTS_ROOT = _OAK_ROOT / 'results' if _OAK_ROOT.exists() else _LOCAL_ROOT
+    OPT_ALL_CSV   = _nevo_out_dir(_RESULTS_ROOT) / 'multistart_all.csv'
+
+    def _parse_spec(label: str) -> tuple[list[str], list[str]]:
+        """Inverse of f"x2={x2} | demos={demos}"."""
+        x2_part, demo_part = label.split(' | demos=')
+        return (ast.literal_eval(x2_part.split('x2=', 1)[1]),
+                ast.literal_eval(demo_part))
+
+    if not OPT_ALL_CSV.exists():
+        raise SystemExit(f"No results at {OPT_ALL_CSV}; run an initial grid first.")
+
+    converged = (pd.read_csv(OPT_ALL_CSV, usecols=['spec', 'seed'])
+                   .groupby('spec')['seed'].nunique())
+    short = converged[converged < TARGET_SEEDS].sort_values()
+
+    if short.empty:
+        print(f"All specs already have >= {TARGET_SEEDS} converged seeds.")
+    else:
+        print(f"Topping up {len(short)} spec(s) below {TARGET_SEEDS} "
+              f"converged seeds:")
+        for label, n in short.items():
+            print(f"  {n:>3}/{TARGET_SEEDS}  {label}")
+        for label in short.index:
+            x2, demos = _parse_spec(label)
+            main(x2_combos=[x2], demo_combos=[demos],
+                 n_starts=None, target_seeds=TARGET_SEEDS)
