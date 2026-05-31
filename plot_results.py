@@ -94,6 +94,18 @@ def _valid(row: dict) -> bool:
         return False
 
 
+def _filter_valid(rows: list[dict], elas_rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Keep only valid starts and the elasticity rows belonging to them.
+
+    A spec with no valid start is dropped entirely (it contributes no rows to
+    either list). Elasticity rows join multistart rows on (spec, seed).
+    """
+    valid_rows = [r for r in rows if _valid(r)]
+    keys = {(r['spec'], r['seed']) for r in valid_rows}
+    valid_elas = [r for r in elas_rows if (r['spec'], r['seed']) in keys]
+    return valid_rows, valid_elas
+
+
 def _best_per_spec(rows: list[dict]) -> list[dict]:
     by_spec: dict[str, list[dict]] = {}
     for r in rows:
@@ -320,8 +332,7 @@ def plot_objective_ranking(rows: list[dict], label: str, out_dir: Path):
     pcoefs  = [float(r['price_coef']) for r in best]
 
     fig, ax = plt.subplots(figsize=(9, max(3, 0.45 * len(best) + 1.5)))
-    colors  = [COL_VALID if p < 0 else COL_INVALID for p in pcoefs]
-    bars    = ax.barh(range(len(best)), objs, color=colors, edgecolor='white', linewidth=0.5)
+    bars    = ax.barh(range(len(best)), objs, color=COL_VALID, edgecolor='white', linewidth=0.5)
     ax.set_yticks(range(len(best)))
     ax.set_yticklabels(specs, fontsize=8)
     ax.invert_yaxis()
@@ -329,10 +340,6 @@ def plot_objective_ranking(rows: list[dict], label: str, out_dir: Path):
     ax.set_title(f'{label} — Objective Ranking by Specification', fontweight='bold')
     for i, (obj, pc) in enumerate(zip(objs, pcoefs)):
         ax.text(obj + max(objs) * 0.005, i, f'α={pc:.3f}', va='center', fontsize=7, color='#333')
-    from matplotlib.patches import Patch
-    legend = [Patch(color=COL_VALID, label='Valid (α < 0)'),
-              Patch(color=COL_INVALID, label='Invalid (α ≥ 0)')]
-    ax.legend(handles=legend, fontsize=8, loc='lower right')
     sns.despine(ax=ax)
     _footer(fig, f'{label} · Analysis 01 · GMM objective for best start per specification')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
@@ -346,8 +353,7 @@ def plot_price_coef(rows: list[dict], label: str, out_dir: Path):
     markups = [-1.0 / p if p != 0 else float('nan') for p in pcoefs]
 
     fig, ax = plt.subplots(figsize=(9, max(3, 0.45 * len(best) + 1.5)))
-    colors = [COL_VALID if p < 0 else COL_INVALID for p in pcoefs]
-    ax.barh(range(len(best)), pcoefs, color=colors, edgecolor='white', linewidth=0.5)
+    ax.barh(range(len(best)), pcoefs, color=COL_VALID, edgecolor='white', linewidth=0.5)
     ax.axvline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.5)
     ax.set_yticks(range(len(best)))
     ax.set_yticklabels(specs, fontsize=8)
@@ -376,9 +382,8 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
     fig, ax = plt.subplots(figsize=(max(6, 0.7 * len(specs_sorted) + 2), 5))
     for xi, spec in enumerate(specs_sorted):
         for r in by_spec[spec]:
-            col = COL_VALID if _valid(r) else COL_INVALID
             mk  = '*' if r.get('best') == 'True' else 'o'
-            ax.scatter(xi, float(r['objective']), color=col, marker=mk,
+            ax.scatter(xi, float(r['objective']), color=COL_VALID, marker=mk,
                        s=60, zorder=3, edgecolors='white', linewidths=0.4)
 
     ax.set_xticks(range(len(specs_sorted)))
@@ -386,9 +391,8 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
     ax.set_ylabel('GMM Objective')
     ax.set_title(f'{label} — Multi-start Convergence Stability', fontweight='bold')
     from matplotlib.lines import Line2D
-    legend = [Line2D([0], [0], marker='o', color='w', markerfacecolor=COL_VALID,   markersize=8, label='Valid (α < 0)'),
-              Line2D([0], [0], marker='o', color='w', markerfacecolor=COL_INVALID, markersize=8, label='Invalid'),
-              Line2D([0], [0], marker='*', color='w', markerfacecolor='grey',       markersize=10, label='Best start')]
+    legend = [Line2D([0], [0], marker='o', color='w', markerfacecolor=COL_VALID, markersize=8, label='Valid start'),
+              Line2D([0], [0], marker='*', color='w', markerfacecolor='grey',     markersize=10, label='Best start')]
     ax.legend(handles=legend, fontsize=8)
     sns.despine(ax=ax)
     _footer(fig, f'{label} · Analysis 05 · Each point = one random start; (*) = best start')
@@ -399,23 +403,20 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
 def plot_convergence_scatter(rows: list[dict], label: str, out_dir: Path):
     fig, ax = plt.subplots(figsize=(7, 5))
     for r in rows:
-        col = COL_VALID if _valid(r) else COL_INVALID
         mk  = '*' if r.get('best') == 'True' else 'o'
         ax.scatter(float(r['price_coef']), float(r['objective']),
-                   color=col, marker=mk, s=70, alpha=0.85,
+                   color=COL_VALID, marker=mk, s=70, alpha=0.85,
                    edgecolors='white', linewidths=0.4)
     ax.axvline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.5, label='α = 0 boundary')
     ax.set_xlabel('Price Coefficient (α)')
     ax.set_ylabel('GMM Objective')
     ax.set_title(f'{label} — Convergence Scatter', fontweight='bold')
-    from matplotlib.patches import Patch
     from matplotlib.lines import Line2D
-    legend = [Patch(color=COL_VALID,   label='Valid (α < 0)'),
-              Patch(color=COL_INVALID, label='Invalid (α ≥ 0)'),
-              Line2D([0], [0], marker='*', color='w', markerfacecolor='grey', markersize=10, label='Best start')]
+    legend = [Line2D([0], [0], marker='o', color='w', markerfacecolor=COL_VALID, markersize=8, label='Valid start'),
+              Line2D([0], [0], marker='*', color='w', markerfacecolor='grey',     markersize=10, label='Best start')]
     ax.legend(handles=legend, fontsize=8)
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 06 · All starts: objective vs price coefficient')
+    _footer(fig, f'{label} · Analysis 06 · Valid starts: objective vs price coefficient')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '06_convergence_scatter.png')
 
@@ -1106,16 +1107,12 @@ def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
     maxs   = [max(kv[1]) for kv in ranked]
     counts = [len(kv[1]) for kv in ranked]
 
-    # Validity: any start in this spec has price_coef < 0
-    valid_specs = {r['spec'] for r in rows if _valid(r)}
-    colors = [COL_VALID if kv[0] in valid_specs else COL_INVALID for kv in ranked]
-
     n = len(ranked)
     fig, ax = plt.subplots(figsize=(9, max(3, 0.45 * n + 1.5)))
     ys = list(range(n))
 
     # Bars for mean
-    ax.barh(ys, means, color=colors, alpha=0.6, edgecolor='white', linewidth=0.5)
+    ax.barh(ys, means, color=COL_VALID, alpha=0.6, edgecolor='white', linewidth=0.5)
     # Error bars (±1 std)
     ax.errorbar(means, ys, xerr=stds, fmt='none', color='#444', linewidth=1.2,
                 capsize=3, capthick=1.2, label='±1 std')
@@ -1132,14 +1129,11 @@ def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
     ax.set_yticks(ys)
     ax.set_yticklabels(specs, fontsize=max(6, 9 - n // 8))
     ax.set_xlabel('GMM Objective')
-    ax.set_title(f'{label} — Objective by Specification (mean ± std, range)\nGreen = any valid start; sorted by mean',
+    ax.set_title(f'{label} — Objective by Specification (mean ± std, range)\nsorted by mean',
                  fontweight='bold', fontsize=10)
     ax.invert_yaxis()
-    from matplotlib.patches import Patch
-    ax.legend(handles=[Patch(color=COL_VALID, alpha=0.6, label='any valid start'),
-                       Patch(color=COL_INVALID, alpha=0.6, label='no valid start')],
-              loc='lower right', fontsize=8)
-    _footer(fig, f'{label} · Analysis 19 · Mean±std of GMM objective across all random starts per spec')
+    ax.legend(loc='lower right', fontsize=8)
+    _footer(fig, f'{label} · Analysis 19 · Mean±std of GMM objective across valid random starts per spec')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '19_objective_spec_comparison.png')
 
@@ -1355,7 +1349,7 @@ def plot_price_coef_across_sims(rows: list[dict], label: str, out_dir: Path):
 
     raw_seeds    = [r['seed'] for r in spec_rows]
     raw_pcoefs   = [float(r['price_coef']) for r in spec_rows]
-    raw_colors   = [COL_VALID if _valid(r) else COL_INVALID for r in spec_rows]
+    raw_colors   = [COL_VALID for _ in spec_rows]
 
     sorted_seeds, perm = _numeric_seed_sort(raw_seeds)
     pcoefs       = [raw_pcoefs[i]  for i in perm]
@@ -1376,10 +1370,7 @@ def plot_price_coef_across_sims(rows: list[dict], label: str, out_dir: Path):
     ax.set_title('Price coefficient per simulation', fontweight='bold', fontsize=9)
     ax.grid(axis='y', linewidth=0.4, alpha=0.5)
 
-    legend_handles = [
-        Patch(color=COL_VALID,   label='valid (α < 0)'),
-        Patch(color=COL_INVALID, label='invalid (α ≥ 0)'),
-    ]
+    legend_handles = [Patch(color=COL_VALID, label='valid start (α < 0)')]
     if mean_line is not None:
         legend_handles.insert(0, mean_line)
     ax.legend(handles=legend_handles, fontsize=8, loc='best')
@@ -1407,7 +1398,11 @@ def main():
         blp_elas_rows = _load(blp_elas_csv)
         blp_graphs_dir = _graphs_dir(blp_csv)
         print(f'Loaded BLP  multistart:   {len(blp_rows)} rows from {blp_csv}')
-        print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}\n')
+        print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}')
+        _n0, _e0 = len(blp_rows), len(blp_elas_rows)
+        blp_rows, blp_elas_rows = _filter_valid(blp_rows, blp_elas_rows)
+        print(f'  valid starts: {len(blp_rows)}/{_n0}; '
+              f'elasticity rows kept: {len(blp_elas_rows)}/{_e0}\n')
 
         print('=== BLP figures ===')
         plot_objective_ranking(blp_rows,      'BLP',  blp_graphs_dir)
@@ -1439,7 +1434,11 @@ def main():
         nevo_elas_rows = _load(nevo_elas_csv)
         nevo_graphs_dir = _graphs_dir(nevo_csv)
         print(f'Loaded Nevo multistart:   {len(nevo_rows)} rows from {nevo_csv}')
-        print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}\n')
+        print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}')
+        _n0, _e0 = len(nevo_rows), len(nevo_elas_rows)
+        nevo_rows, nevo_elas_rows = _filter_valid(nevo_rows, nevo_elas_rows)
+        print(f'  valid starts: {len(nevo_rows)}/{_n0}; '
+              f'elasticity rows kept: {len(nevo_elas_rows)}/{_e0}\n')
 
         print('=== Nevo figures ===')
         plot_objective_ranking(nevo_rows,      'NEVO', nevo_graphs_dir)
