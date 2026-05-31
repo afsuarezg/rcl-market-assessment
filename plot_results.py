@@ -377,7 +377,9 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
     specs_sorted = sorted(by_spec, key=lambda s: min(float(r['objective'])
                                                      for r in by_spec[s]))
     short_labels = [_short(s, 28) for s in specs_sorted]
-    counts       = [len(by_spec[s]) for s in specs_sorted]
+    objs_by_spec = [[float(r['objective']) for r in by_spec[s]] for s in specs_sorted]
+    counts       = [len(o) for o in objs_by_spec]
+    variances    = [sum((v - sum(o) / len(o)) ** 2 for v in o) / len(o) for o in objs_by_spec]
 
     fig, ax = plt.subplots(figsize=(max(6, 0.7 * len(specs_sorted) + 2), 5))
     for xi, spec in enumerate(specs_sorted):
@@ -386,12 +388,14 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
             ax.scatter(xi, float(r['objective']), color=COL_VALID, marker=mk,
                        s=60, zorder=3, edgecolors='white', linewidths=0.4)
 
-    # Headroom so the per-spec simulation counts clear the topmost points.
+    # Headroom so the per-spec count and variance annotations clear the points.
     y0, y1 = ax.get_ylim()
-    ax.set_ylim(y0, y1 + 0.10 * (y1 - y0))
-    for xi, c in enumerate(counts):
+    ax.set_ylim(y0, y1 + 0.16 * (y1 - y0))
+    for xi, (c, var) in enumerate(zip(counts, variances)):
         ax.text(xi, 0.99, f'n={c}', transform=ax.get_xaxis_transform(),
                 ha='center', va='top', fontsize=7, color='#555')
+        ax.text(xi, 0.94, f'var={var:.3g}', transform=ax.get_xaxis_transform(),
+                ha='center', va='top', fontsize=6, color='#888')
 
     ax.set_xticks(range(len(specs_sorted)))
     ax.set_xticklabels(short_labels, rotation=45, ha='right', fontsize=8)
@@ -402,7 +406,8 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
               Line2D([0], [0], marker='*', color='w', markerfacecolor='grey',     markersize=10, label='Best start')]
     ax.legend(handles=legend, fontsize=8)
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 05 · Each point = one random start; (*) = best start; n = simulations per spec')
+    _footer(fig, f'{label} · Analysis 05 · Each point = one random start; (*) = best start; '
+                 f'n = simulations per spec; var = variance of GMM objective across sims')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '05_multistart_stability.png')
 
