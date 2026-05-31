@@ -75,6 +75,34 @@ def _load(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+MAX_SEEDS_PER_SPEC = 40
+
+
+def _cap_seeds(rows: list[dict], elas_rows: list[dict],
+               max_seeds: int = MAX_SEEDS_PER_SPEC) -> tuple[list[dict], list[dict]]:
+    """Keep at most `max_seeds` unique seeds per spec (lowest seed numbers).
+
+    Caps the multistart sample so each spec contributes at most `max_seeds`
+    simulations; elasticity rows are restricted to the same kept (spec, seed)
+    pairs. Validity is not considered here (the convergence audit still sees
+    every valid/invalid start within the cap).
+    """
+    def _seednum(s):
+        try:
+            return int(s)
+        except (ValueError, TypeError):
+            return float('inf')
+
+    by_spec: dict[str, set] = {}
+    for r in rows:
+        by_spec.setdefault(r['spec'], set()).add(r['seed'])
+    keep = {spec: set(sorted(seeds, key=_seednum)[:max_seeds])
+            for spec, seeds in by_spec.items()}
+    capped_rows = [r for r in rows      if r['seed'] in keep.get(r['spec'], ())]
+    capped_elas = [r for r in elas_rows if r['seed'] in keep.get(r['spec'], ())]
+    return capped_rows, capped_elas
+
+
 def _f(val, digits=4) -> str:
     """Format a numeric string to fixed decimals."""
     try:
@@ -1208,7 +1236,9 @@ def main():
         blp_elas_rows = _load(blp_elas_csv)
         blp_analysis_dir = _analysis_dir(blp_csv)
         print(f'Loaded BLP  multistart:   {len(blp_rows)} rows from {blp_csv}')
-        print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}\n')
+        print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}')
+        blp_rows, blp_elas_rows = _cap_seeds(blp_rows, blp_elas_rows)
+        print(f'  capped to <= {MAX_SEEDS_PER_SPEC} seeds/spec: {len(blp_rows)} starts\n')
 
         _run_and_save(blp_analysis_dir, '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
         _run_and_save(blp_analysis_dir, '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               blp_rows, 'BLP')
@@ -1240,7 +1270,9 @@ def main():
         nevo_elas_rows = _load(nevo_elas_csv)
         nevo_analysis_dir = _analysis_dir(nevo_csv)
         print(f'Loaded Nevo multistart:   {len(nevo_rows)} rows from {nevo_csv}')
-        print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}\n')
+        print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}')
+        nevo_rows, nevo_elas_rows = _cap_seeds(nevo_rows, nevo_elas_rows)
+        print(f'  capped to <= {MAX_SEEDS_PER_SPEC} seeds/spec: {len(nevo_rows)} starts\n')
 
         _run_and_save(nevo_analysis_dir, '01_objective_ranking.txt',              objective_ranking,                    nevo_rows, 'NEVO')
         _run_and_save(nevo_analysis_dir, '02_demographic_expansion.txt',          nevo_demographic_expansion,           nevo_rows)

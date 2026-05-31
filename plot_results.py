@@ -94,6 +94,33 @@ def _valid(row: dict) -> bool:
         return False
 
 
+MAX_SEEDS_PER_SPEC = 40
+
+
+def _cap_seeds(rows: list[dict], elas_rows: list[dict],
+               max_seeds: int = MAX_SEEDS_PER_SPEC) -> tuple[list[dict], list[dict]]:
+    """Keep at most `max_seeds` unique seeds per spec (lowest seed numbers).
+
+    Caps the multistart sample so each spec contributes at most `max_seeds`
+    simulations; elasticity rows are restricted to the same kept (spec, seed)
+    pairs. Applied to raw loaded rows before any validity filtering.
+    """
+    def _seednum(s):
+        try:
+            return int(s)
+        except (ValueError, TypeError):
+            return float('inf')
+
+    by_spec: dict[str, set] = {}
+    for r in rows:
+        by_spec.setdefault(r['spec'], set()).add(r['seed'])
+    keep = {spec: set(sorted(seeds, key=_seednum)[:max_seeds])
+            for spec, seeds in by_spec.items()}
+    capped_rows = [r for r in rows      if r['seed'] in keep.get(r['spec'], ())]
+    capped_elas = [r for r in elas_rows if r['seed'] in keep.get(r['spec'], ())]
+    return capped_rows, capped_elas
+
+
 def _filter_valid(rows: list[dict], elas_rows: list[dict]) -> tuple[list[dict], list[dict]]:
     """Keep only valid starts and the elasticity rows belonging to them.
 
@@ -1415,6 +1442,7 @@ def main():
         print(f'Loaded BLP  multistart:   {len(blp_rows)} rows from {blp_csv}')
         print(f'Loaded BLP  elasticities: {len(blp_elas_rows)} rows from {blp_elas_csv}')
         _n0, _e0 = len(blp_rows), len(blp_elas_rows)
+        blp_rows, blp_elas_rows = _cap_seeds(blp_rows, blp_elas_rows)
         blp_rows, blp_elas_rows = _filter_valid(blp_rows, blp_elas_rows)
         print(f'  valid starts: {len(blp_rows)}/{_n0}; '
               f'elasticity rows kept: {len(blp_elas_rows)}/{_e0}\n')
@@ -1451,6 +1479,7 @@ def main():
         print(f'Loaded Nevo multistart:   {len(nevo_rows)} rows from {nevo_csv}')
         print(f'Loaded Nevo elasticities: {len(nevo_elas_rows)} rows from {nevo_elas_csv}')
         _n0, _e0 = len(nevo_rows), len(nevo_elas_rows)
+        nevo_rows, nevo_elas_rows = _cap_seeds(nevo_rows, nevo_elas_rows)
         nevo_rows, nevo_elas_rows = _filter_valid(nevo_rows, nevo_elas_rows)
         print(f'  valid starts: {len(nevo_rows)}/{_n0}; '
               f'elasticity rows kept: {len(nevo_elas_rows)}/{_e0}\n')
