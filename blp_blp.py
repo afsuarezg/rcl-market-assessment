@@ -293,6 +293,34 @@ def run_multistart(
 # 7. Optimal instruments
 # ─────────────────────────────────────────────────────────────────────────────
 
+def is_usable_start(sr: StartResult) -> tuple[bool, str]:
+    """Pre-screen a first-stage start before applying optimal instruments.
+
+    Returns (ok, reason). A start is rejected if it failed to converge, has a
+    non-finite objective or parameters, or implies non-finite marginal costs.
+    The log-linear marginal-cost spec recovers costs as exp(fitted log-cost),
+    which overflows to inf for extreme supply-side estimates; those inf costs
+    later crash to_problem()'s collinearity check, so we screen them out here.
+    """
+    res = sr.result
+    if not res.converged:
+        return False, "did not converge"
+    if not np.isfinite(float(res.objective)):
+        return False, "non-finite objective"
+    for name, arr in (('sigma', res.sigma), ('pi', res.pi),
+                      ('beta', res.beta), ('gamma', res.gamma)):
+        if arr is not None and not np.all(np.isfinite(np.asarray(arr, dtype=float))):
+            return False, f"non-finite {name}"
+    try:
+        with np.errstate(over='ignore', invalid='ignore'):
+            costs = res.compute_costs()
+        if not np.all(np.isfinite(costs)):
+            return False, "non-finite marginal costs"
+    except Exception as e:  # noqa: BLE001 — any failure means the start is unusable
+        return False, f"cost computation failed ({type(e).__name__}: {e})"
+    return True, "ok"
+
+
 def apply_optimal_instruments(
     sr: StartResult,
     gtol: float = 1e-5,
@@ -643,7 +671,21 @@ def main(
 
             # ── Stage 2: optimal instruments ─────────────────────────────────
             print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
-            opt_starts = [apply_optimal_instruments(sr) for sr in starts]
+            opt_starts = []
+            for sr in starts:
+                ok, reason = is_usable_start(sr)            # Option 2: pre-filter
+                if not ok:
+                    print(f"  Skipping seed {sr.seed}: {reason} (pre-filter).")
+                    continue
+                try:                                        # Option 1: backstop
+                    opt_starts.append(apply_optimal_instruments(sr))
+                except Exception as e:  # noqa: BLE001 — one bad start must not kill the batch
+                    print(f"  Dropping seed {sr.seed}: optimal instruments failed "
+                          f"({type(e).__name__}: {e}).")
+            if not opt_starts:
+                print(f"  No usable starts for {label} after optimal instruments; "
+                      f"skipping spec.")
+                continue
             opt_starts = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
 
             opt_detail = compare_multistart_results({label: opt_starts})
