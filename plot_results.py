@@ -377,7 +377,10 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
     specs_sorted = sorted(by_spec, key=lambda s: min(float(r['objective'])
                                                      for r in by_spec[s]))
     short_labels = [_short(s, 28) for s in specs_sorted]
-    objs_by_spec = [[float(r['objective']) for r in by_spec[s]] for s in specs_sorted]
+    # Count unique valid seeds (not rows): a seed can appear in more than one
+    # row, which would otherwise inflate the per-spec count vs the actual starts.
+    objs_by_spec = [list({r['seed']: float(r['objective']) for r in by_spec[s]}.values())
+                    for s in specs_sorted]
     counts       = [len(o) for o in objs_by_spec]
     variances    = [sum((v - sum(o) / len(o)) ** 2 for v in o) / len(o) for o in objs_by_spec]
 
@@ -407,7 +410,7 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
     ax.legend(handles=legend, fontsize=8)
     sns.despine(ax=ax)
     _footer(fig, f'{label} · Analysis 05 · Each point = one random start; (*) = best start; '
-                 f'n = simulations per spec; var = variance of GMM objective across sims')
+                 f'n = unique valid seeds per spec; var = variance of GMM objective across them')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '05_multistart_stability.png')
 
