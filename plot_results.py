@@ -329,7 +329,6 @@ def plot_objective_ranking(rows: list[dict], label: str, out_dir: Path):
     best = _best_per_spec(rows)
     specs   = [_short(r['spec']) for r in best]
     objs    = [float(r['objective']) for r in best]
-    pcoefs  = [float(r['price_coef']) for r in best]
 
     fig, ax = plt.subplots(figsize=(9, max(3, 0.45 * len(best) + 1.5)))
     bars    = ax.barh(range(len(best)), objs, color=COL_VALID, edgecolor='white', linewidth=0.5)
@@ -338,8 +337,8 @@ def plot_objective_ranking(rows: list[dict], label: str, out_dir: Path):
     ax.invert_yaxis()
     ax.set_xlabel('GMM Objective')
     ax.set_title(f'{label} — Objective Ranking by Specification', fontweight='bold')
-    for i, (obj, pc) in enumerate(zip(objs, pcoefs)):
-        ax.text(obj + max(objs) * 0.005, i, f'α={pc:.3f}', va='center', fontsize=7, color='#333')
+    for i, obj in enumerate(objs):
+        ax.text(obj + max(objs) * 0.005, i, f'{obj:.4g}', va='center', fontsize=7, color='#333')
     sns.despine(ax=ax)
     _footer(fig, f'{label} · Analysis 01 · GMM objective for best start per specification')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
