@@ -7,6 +7,9 @@
 		{
 			"name": "rcl-market-assessment",
 			"path": "."
+		},
+		{
+			"path": "../nielsen-market-assessment"
 		}
 	],
 	"settings": {}

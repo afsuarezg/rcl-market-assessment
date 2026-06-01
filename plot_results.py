@@ -376,7 +376,6 @@ def plot_price_coef(rows: list[dict], label: str, out_dir: Path):
     best = sorted(_best_per_spec(rows), key=lambda r: float(r['price_coef']))
     specs  = [_short(r['spec']) for r in best]
     pcoefs = [float(r['price_coef']) for r in best]
-    markups = [-1.0 / p if p != 0 else float('nan') for p in pcoefs]
 
     fig, ax = plt.subplots(figsize=(9, max(3, 0.45 * len(best) + 1.5)))
     ax.barh(range(len(best)), pcoefs, color=COL_VALID, edgecolor='white', linewidth=0.5)
@@ -386,11 +385,15 @@ def plot_price_coef(rows: list[dict], label: str, out_dir: Path):
     ax.invert_yaxis()
     ax.set_xlabel('Price Coefficient (α)')
     ax.set_title(f'{label} — Price Coefficient Sensitivity', fontweight='bold')
-    for i, (pc, mk) in enumerate(zip(pcoefs, markups)):
-        mk_str = f'  markup≈{mk:.3f}' if not math.isnan(mk) else ''
-        ax.text(pc - abs(pc) * 0.01, i, mk_str, va='center', ha='right', fontsize=7, color='#333')
+    for i, pc in enumerate(pcoefs):
+        # Anchor the label just inside the bar tip, growing toward zero so it
+        # always stays within the axes (bars can be long and negative).
+        if pc >= 0:
+            ax.text(pc, i, f'α≈{pc:.4f}  ', va='center', ha='right', fontsize=7, color='#333')
+        else:
+            ax.text(pc, i, f'  α≈{pc:.4f}', va='center', ha='left', fontsize=7, color='#333')
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 07 · Price coefficient across specifications; markup ≈ −1/α')
+    _footer(fig, f'{label} · Analysis 07 · Price coefficient across specifications')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '07_price_coef.png')
 
