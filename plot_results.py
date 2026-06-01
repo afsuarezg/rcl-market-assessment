@@ -390,9 +390,9 @@ def plot_price_coef(rows: list[dict], label: str, out_dir: Path):
         mk_str = f'  markup≈{mk:.3f}' if not math.isnan(mk) else ''
         ax.text(pc - abs(pc) * 0.01, i, mk_str, va='center', ha='right', fontsize=7, color='#333')
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 04 · Price coefficient across specifications; markup ≈ −1/α')
+    _footer(fig, f'{label} · Analysis 07 · Price coefficient across specifications; markup ≈ −1/α')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '04_price_coef.png')
+    _savefig(fig, out_dir, '07_price_coef.png')
 
 
 def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
@@ -436,10 +436,10 @@ def plot_multistart_stability(rows: list[dict], label: str, out_dir: Path):
               Line2D([0], [0], marker='*', color='w', markerfacecolor='grey',     markersize=10, label='Best start')]
     ax.legend(handles=legend, fontsize=8)
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 05 · Each point = one random start; (*) = best start; '
+    _footer(fig, f'{label} · Analysis 02 · Each point = one random start; (*) = best start; '
                  f'n = unique valid seeds per spec; var = variance of GMM objective across them')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '05_multistart_stability.png')
+    _savefig(fig, out_dir, '02_multistart_stability.png')
 
 
 def plot_convergence_scatter(rows: list[dict], label: str, out_dir: Path):
@@ -458,15 +458,15 @@ def plot_convergence_scatter(rows: list[dict], label: str, out_dir: Path):
               Line2D([0], [0], marker='*', color='w', markerfacecolor='grey',     markersize=10, label='Best start')]
     ax.legend(handles=legend, fontsize=8)
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 06 · Valid starts: objective vs price coefficient')
+    _footer(fig, f'{label} · Analysis 03 · Valid starts: objective vs price coefficient')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '06_convergence_scatter.png')
+    _savefig(fig, out_dir, '03_convergence_scatter.png')
 
 
 def plot_global_minimum(rows: list[dict], label: str, out_dir: Path):
     valid = sorted([r for r in rows if _valid(r)], key=lambda r: float(r['objective']))
     if not valid:
-        print(f'  [{label}] No valid starts — skipping 07_global_minimum.png')
+        print(f'  [{label}] No valid starts — skipping 04_global_minimum.png')
         return
     best_obj = float(valid[0]['objective'])
     ylabels  = [f'{r["spec"][:28]}\nseed={r["seed"]}' for r in valid]
@@ -482,15 +482,15 @@ def plot_global_minimum(rows: list[dict], label: str, out_dir: Path):
     ax.set_title(f'{label} — Distance from Global Minimum', fontweight='bold')
     ax.axvline(0, color='black', linewidth=0.8)
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 07 · Valid starts ranked by Δ from global minimum')
+    _footer(fig, f'{label} · Analysis 04 · Valid starts ranked by Δ from global minimum')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '07_global_minimum.png')
+    _savefig(fig, out_dir, '04_global_minimum.png')
 
 
 def plot_basin_scatter(rows: list[dict], label: str, out_dir: Path):
     valid = [r for r in rows if _valid(r)]
     if not valid:
-        print(f'  [{label}] No valid starts — skipping 08_basin_scatter.png')
+        print(f'  [{label}] No valid starts — skipping 05_basin_scatter.png')
         return
     global_min = min(float(r['objective']) for r in valid)
     THRESHOLD  = 5.0
@@ -510,9 +510,9 @@ def plot_basin_scatter(rows: list[dict], label: str, out_dir: Path):
               Patch(color=COL_BASIN_B, label=f'Basin B (Δ > {THRESHOLD})')]
     ax.legend(handles=legend, fontsize=8)
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 08 · Valid starts classified by distance from global minimum')
+    _footer(fig, f'{label} · Analysis 05 · Valid starts classified by distance from global minimum')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '08_basin_scatter.png')
+    _savefig(fig, out_dir, '05_basin_scatter.png')
 
 
 def plot_own_elas_boxplot(elas_rows: list[dict], all_rows: list[dict],
@@ -549,13 +549,13 @@ def plot_own_elas_boxplot(elas_rows: list[dict], all_rows: list[dict],
     ax.set_ylabel('Own-Price Elasticity')
     ax.set_title(f'{label} — Own-Price Elasticity Distribution by Specification', fontweight='bold')
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 10 · Box = IQR; dots = individual products (best start per spec)')
+    _footer(fig, f'{label} · Analysis 20 · Box = IQR; dots = individual products (best start per spec)')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '10_own_elas_boxplot.png')
+    _savefig(fig, out_dir, '20_own_elas_boxplot.png')
 
 
 def plot_multistart_elas_dotplot(elas_rows: list[dict], label: str, out_dir: Path):
-    """Analysis 11 — per-product own-price elas across seeds (skip if <2 seeds per spec)."""
+    """Analysis 21 — per-product own-price elas across seeds (skip if <2 seeds per spec)."""
     seeds_per_spec: dict[str, set] = {}
     for r in elas_rows:
         if r['own_price'] == 'True':
@@ -563,7 +563,7 @@ def plot_multistart_elas_dotplot(elas_rows: list[dict], label: str, out_dir: Pat
 
     multi_specs = {s for s, seeds in seeds_per_spec.items() if len(seeds) > 1}
     if not multi_specs:
-        print(f'  [{label}] No multi-seed specs — skipping 11_multistart_elas_dotplot.png')
+        print(f'  [{label}] No multi-seed specs — skipping 21_multistart_elas_dotplot.png')
         return
 
     for si, spec in enumerate(sorted(multi_specs)):
@@ -588,17 +588,17 @@ def plot_multistart_elas_dotplot(elas_rows: list[dict], label: str, out_dir: Pat
         short_spec = _short(spec, 50)
         ax.set_title(f'{label} — Multistart Elasticity Stability\n{short_spec}', fontweight='bold', fontsize=10)
         sns.despine(ax=ax)
-        _footer(fig, f'{label} · Analysis 11 · Each line = one product across seeds')
+        _footer(fig, f'{label} · Analysis 21 · Each line = one product across seeds')
         plt.tight_layout(rect=[0, 0.03, 1, 1])
         suffix = f'_spec{si+1}' if len(multi_specs) > 1 else ''
-        _savefig(fig, out_dir, f'11_multistart_elas_dotplot{suffix}.png')
+        _savefig(fig, out_dir, f'21_multistart_elas_dotplot{suffix}.png')
 
 
 def plot_cross_elas_heatmap(elas_rows: list[dict], all_rows: list[dict],
                              label: str, out_dir: Path, max_products: int = 24):
     best_list = _best_per_spec(all_rows)
     if not best_list:
-        print(f'  [{label}] No valid specs — skipping 12_cross_elas_heatmap.png')
+        print(f'  [{label}] No valid specs — skipping 22_cross_elas_heatmap.png')
         return
     spec = best_list[0]['spec']
     seed = best_list[0]['seed']
@@ -614,7 +614,7 @@ def plot_cross_elas_heatmap(elas_rows: list[dict], all_rows: list[dict],
             break
 
     if not elas_dict:
-        print(f'  [{label}] No elasticity rows match any best spec — skipping 12_cross_elas_heatmap.png')
+        print(f'  [{label}] No elasticity rows match any best spec — skipping 22_cross_elas_heatmap.png')
         return
 
     products = sorted({p for (j, k) in elas_dict for p in (j, k)})
@@ -648,16 +648,16 @@ def plot_cross_elas_heatmap(elas_rows: list[dict], all_rows: list[dict],
                  fontweight='bold', fontsize=9)
     ax.tick_params(axis='x', rotation=90, labelsize=max(5, 9 - n // 10))
     ax.tick_params(axis='y', rotation=0,  labelsize=max(5, 9 - n // 10))
-    _footer(fig, f'{label} · Analysis 12 · Diagonal = own-price; off-diagonal = cross-price')
+    _footer(fig, f'{label} · Analysis 22 · Diagonal = own-price; off-diagonal = cross-price')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '12_cross_elas_heatmap.png')
+    _savefig(fig, out_dir, '22_cross_elas_heatmap.png')
 
 
 def plot_asymmetry_scatter(elas_rows: list[dict], all_rows: list[dict],
                             label: str, out_dir: Path):
     best_list = _best_per_spec(all_rows)
     if not best_list:
-        print(f'  [{label}] No valid specs — skipping 13_asymmetry_scatter.png')
+        print(f'  [{label}] No valid specs — skipping 23_asymmetry_scatter.png')
         return
     spec = best_list[0]['spec']
     seed = best_list[0]['seed']
@@ -678,7 +678,7 @@ def plot_asymmetry_scatter(elas_rows: list[dict], all_rows: list[dict],
             seen.add((j, k))
 
     if not pairs:
-        print(f'  [{label}] No symmetric pairs — skipping 13_asymmetry_scatter.png')
+        print(f'  [{label}] No symmetric pairs — skipping 23_asymmetry_scatter.png')
         return
 
     ejks  = [p[0] for p in pairs]
@@ -699,20 +699,20 @@ def plot_asymmetry_scatter(elas_rows: list[dict], all_rows: list[dict],
     ax.set_title(f'{label} — Cross-Price Elasticity Symmetry', fontweight='bold')
     ax.legend(fontsize=8)
     sns.despine(ax=ax)
-    _footer(fig, f'{label} · Analysis 13 · Points on diagonal = perfectly symmetric substitution')
+    _footer(fig, f'{label} · Analysis 23 · Points on diagonal = perfectly symmetric substitution')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '13_asymmetry_scatter.png')
+    _savefig(fig, out_dir, '23_asymmetry_scatter.png')
 
 
 def plot_own_stability_heatmap(elas_rows: list[dict], all_rows: list[dict],
                                 label: str, out_dir: Path):
-    """Analysis 16 — own-price elas × spec heatmap with CV sidebar."""
+    """Analysis 26 — own-price elas × spec heatmap with CV sidebar."""
     seed_map  = _best_seed_map(all_rows)
     best_list = _best_per_spec(all_rows)
     specs     = [r['spec'] for r in best_list]
 
     if len(specs) < 2:
-        print(f'  [{label}] <2 specs — skipping 16_own_stability_heatmap.png')
+        print(f'  [{label}] <2 specs — skipping 26_own_stability_heatmap.png')
         return
 
     prod_spec: dict[str, dict[str, float]] = {}
@@ -722,7 +722,7 @@ def plot_own_stability_heatmap(elas_rows: list[dict], all_rows: list[dict],
 
     products = [p for p, d in prod_spec.items() if len(d) == len(specs)]
     if not products:
-        print(f'  [{label}] No products in all specs — skipping 16_own_stability_heatmap.png')
+        print(f'  [{label}] No products in all specs — skipping 26_own_stability_heatmap.png')
         return
 
     MAX_P = 20 if len(products) > 50 else len(products)
@@ -778,20 +778,20 @@ def plot_own_stability_heatmap(elas_rows: list[dict], all_rows: list[dict],
     ax_cv.set_title('CV', fontsize=9)
     ax_cv.tick_params(axis='x', labelsize=8)
 
-    _footer(fig, f'{label} · Analysis 16 · CV = std/|mean| across specs; sorted by CV (most unstable first)')
+    _footer(fig, f'{label} · Analysis 26 · CV = std/|mean| across specs; sorted by CV (most unstable first)')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '16_own_stability_heatmap.png')
+    _savefig(fig, out_dir, '26_own_stability_heatmap.png')
 
 
 def plot_cross_stability_heatmap(elas_rows: list[dict], all_rows: list[dict],
                                   label: str, out_dir: Path, top_k: int = 10):
-    """Analysis 17 — cross-price elas for top-k pairs × spec heatmap."""
+    """Analysis 27 — cross-price elas for top-k pairs × spec heatmap."""
     seed_map  = _best_seed_map(all_rows)
     best_list = _best_per_spec(all_rows)
     specs     = [r['spec'] for r in best_list]
 
     if len(specs) < 2 or not best_list:
-        print(f'  [{label}] <2 specs — skipping 17_cross_stability_heatmap.png')
+        print(f'  [{label}] <2 specs — skipping 27_cross_stability_heatmap.png')
         return
 
     best_spec = best_list[0]['spec']
@@ -805,7 +805,7 @@ def plot_cross_stability_heatmap(elas_rows: list[dict], all_rows: list[dict],
     top_pairs = [(j, k) for j, k, _ in top_cross]
 
     if not top_pairs:
-        print(f'  [{label}] No cross-price data — skipping 17_cross_stability_heatmap.png')
+        print(f'  [{label}] No cross-price data — skipping 27_cross_stability_heatmap.png')
         return
 
     top_set = set(top_pairs)
@@ -828,7 +828,7 @@ def plot_cross_stability_heatmap(elas_rows: list[dict], all_rows: list[dict],
             rows_data.append(((j, k), _cv(valid_vals), [d.get(s, float('nan')) for s in specs]))
 
     if not rows_data:
-        print(f'  [{label}] Insufficient cross-spec data — skipping 17_cross_stability_heatmap.png')
+        print(f'  [{label}] Insufficient cross-spec data — skipping 27_cross_stability_heatmap.png')
         return
 
     rows_data.sort(key=lambda x: x[1] if not math.isnan(x[1]) else -1, reverse=True)
@@ -859,20 +859,20 @@ def plot_cross_stability_heatmap(elas_rows: list[dict], all_rows: list[dict],
     ax.tick_params(axis='x', rotation=45, labelsize=max(5, 9 - n_spec // 6))
     ax.tick_params(axis='y', rotation=0,  labelsize=8)
     sns.despine(ax=ax, left=True, bottom=True)
-    _footer(fig, f'{label} · Analysis 17 · Rows sorted by CV (most unstable first)')
+    _footer(fig, f'{label} · Analysis 27 · Rows sorted by CV (most unstable first)')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '17_cross_stability_heatmap.png')
+    _savefig(fig, out_dir, '27_cross_stability_heatmap.png')
 
 
 def plot_spec_pairwise_mad(elas_rows: list[dict], all_rows: list[dict],
                             label: str, out_dir: Path):
-    """Analysis 18 — S×S MAD heatmap."""
+    """Analysis 28 — S×S MAD heatmap."""
     seed_map  = _best_seed_map(all_rows)
     best_list = _best_per_spec(all_rows)
     specs     = [r['spec'] for r in best_list]
 
     if len(specs) < 2:
-        print(f'  [{label}] <2 specs — skipping 18_pairwise_mad_heatmap.png')
+        print(f'  [{label}] <2 specs — skipping 28_pairwise_mad_heatmap.png')
         return
 
     spec_prod: dict[str, dict[str, float]] = {s: {} for s in specs}
@@ -913,9 +913,9 @@ def plot_spec_pairwise_mad(elas_rows: list[dict], all_rows: list[dict],
                  fontweight='bold', fontsize=10)
     ax.tick_params(axis='x', rotation=45, labelsize=max(5, 9 - n // 5))
     ax.tick_params(axis='y', rotation=0,  labelsize=max(5, 9 - n // 5))
-    _footer(fig, f'{label} · Analysis 18 · Cell = mean|ε_jj(A) − ε_jj(B)| across products; diagonal masked')
+    _footer(fig, f'{label} · Analysis 28 · Cell = mean|ε_jj(A) − ε_jj(B)| across products; diagonal masked')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '18_pairwise_mad_heatmap.png')
+    _savefig(fig, out_dir, '28_pairwise_mad_heatmap.png')
 
 
 # ---------------------------------------------------------------------------
@@ -967,9 +967,9 @@ def plot_nevo_demographic_expansion(rows: list[dict], out_dir: Path):
 
     fig.suptitle('NEVO — Effect of Adding Demographics (fixed X2)', fontweight='bold', y=1.02)
     sns.despine(fig=fig)
-    _footer(fig, 'NEVO · Analysis 02 · Solid = GMM objective (left axis); dashed = price_coef (right axis)')
+    _footer(fig, 'NEVO · Analysis 37 · Solid = GMM objective (left axis); dashed = price_coef (right axis)')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '02_demographic_expansion.png')
+    _savefig(fig, out_dir, '37_demographic_expansion.png')
 
 
 def plot_nevo_x2_comparison(rows: list[dict], out_dir: Path):
@@ -981,7 +981,7 @@ def plot_nevo_x2_comparison(rows: list[dict], out_dir: Path):
     ]
     present = [(s, best_map[s]) for s in specs if s in best_map]
     if not present:
-        print('  [NEVO] No matching specs — skipping 03_x2_comparison.png')
+        print('  [NEVO] No matching specs — skipping 38_x2_comparison.png')
         return
 
     x2_labels = [s.split("x2=")[1].split(" |")[0] for s, _ in present]
@@ -1005,13 +1005,13 @@ def plot_nevo_x2_comparison(rows: list[dict], out_dir: Path):
     labels = ['GMM objective', 'Price coef (α)']
     ax1.legend(lines, labels, fontsize=8, loc='upper right')
     sns.despine(ax=ax1)
-    _footer(fig, 'NEVO · Analysis 03 · Fixed demographics = [income]; varying X2 characteristics')
+    _footer(fig, 'NEVO · Analysis 38 · Fixed demographics = [income]; varying X2 characteristics')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '03_x2_comparison.png')
+    _savefig(fig, out_dir, '38_x2_comparison.png')
 
 
 def plot_nevo_spearman_heatmap(elas_rows: list[dict], all_rows: list[dict], out_dir: Path):
-    """Analysis 14 — Spearman rank correlation heatmap of own-price elas across specs."""
+    """Analysis 24 — Spearman rank correlation heatmap of own-price elas across specs."""
     import math as _math
 
     def _rank(vals):
@@ -1044,7 +1044,7 @@ def plot_nevo_spearman_heatmap(elas_rows: list[dict], all_rows: list[dict], out_
 
     common = sorted(set.intersection(*[set(d) for d in spec_prod.values()])) if specs else []
     if not common:
-        print('  [NEVO] No common products — skipping 14_spearman_corr_heatmap.png')
+        print('  [NEVO] No common products — skipping 24_spearman_corr_heatmap.png')
         return
 
     n = len(specs)
@@ -1068,14 +1068,14 @@ def plot_nevo_spearman_heatmap(elas_rows: list[dict], all_rows: list[dict], out_
                  fontweight='bold', fontsize=10)
     ax.tick_params(axis='x', rotation=45, labelsize=max(5, 9 - n // 5))
     ax.tick_params(axis='y', rotation=0,  labelsize=max(5, 9 - n // 5))
-    _footer(fig, 'NEVO · Analysis 14 · ρ=1 means perfect rank agreement in own-price elasticities across specs')
+    _footer(fig, 'NEVO · Analysis 24 · ρ=1 means perfect rank agreement in own-price elasticities across specs')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '14_spearman_corr_heatmap.png')
+    _savefig(fig, out_dir, '24_spearman_corr_heatmap.png')
 
 
 def plot_nevo_firm_substitution_heatmap(elas_rows: list[dict], all_rows: list[dict],
                                          out_dir: Path):
-    """Analysis 15 — firm×firm cross-price elasticity heatmap."""
+    """Analysis 25 — firm×firm cross-price elasticity heatmap."""
     def _firm(pid: str) -> str:
         b = pid.index('B')
         return pid[:b]
@@ -1083,7 +1083,7 @@ def plot_nevo_firm_substitution_heatmap(elas_rows: list[dict], all_rows: list[di
     best_list = _best_per_spec(all_rows)
     seed_map  = {r['spec']: r['seed'] for r in best_list}
     if not best_list:
-        print('  [NEVO] No valid specs — skipping 15_firm_substitution_heatmap.png')
+        print('  [NEVO] No valid specs — skipping 25_firm_substitution_heatmap.png')
         return
 
     firm_pair: dict[tuple, list[float]] = {}
@@ -1100,7 +1100,7 @@ def plot_nevo_firm_substitution_heatmap(elas_rows: list[dict], all_rows: list[di
             break
 
     if not firm_pair:
-        print('  [NEVO] No firm-pair elasticity rows match any best spec — skipping 15_firm_substitution_heatmap.png')
+        print('  [NEVO] No firm-pair elasticity rows match any best spec — skipping 25_firm_substitution_heatmap.png')
         return
 
     firms = sorted({f for (fj, fk) in firm_pair for f in (fj, fk)})
@@ -1125,20 +1125,20 @@ def plot_nevo_firm_substitution_heatmap(elas_rows: list[dict], all_rows: list[di
     ax.set_ylabel('Firm j')
     ax.tick_params(axis='x', rotation=0, labelsize=9)
     ax.tick_params(axis='y', rotation=0, labelsize=9)
-    _footer(fig, 'NEVO · Analysis 15 · Mean cross-price elasticity between firm j products and firm k products')
+    _footer(fig, 'NEVO · Analysis 25 · Mean cross-price elasticity between firm j products and firm k products')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '15_firm_substitution_heatmap.png')
+    _savefig(fig, out_dir, '25_firm_substitution_heatmap.png')
 
 
 def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
-    """Analysis 19 — mean ± std of GMM objective across all starts, ranked by mean."""
+    """Analysis 36 — mean ± std of GMM objective across all starts, ranked by mean."""
     by_spec: dict[str, list[float]] = {}
     for r in rows:
         by_spec.setdefault(r['spec'], []).append(float(r['objective']))
 
     ranked = sorted(by_spec.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
     if not ranked:
-        print(f'  [{label}] No data — skipping 19_objective_spec_comparison.png')
+        print(f'  [{label}] No data — skipping 36_objective_spec_comparison.png')
         return
 
     specs  = [_short(kv[0]) for kv in ranked]
@@ -1175,26 +1175,26 @@ def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
                  fontweight='bold', fontsize=10)
     ax.invert_yaxis()
     ax.legend(loc='lower right', fontsize=8)
-    _footer(fig, f'{label} · Analysis 19 · Mean±std of GMM objective across valid random starts per spec')
+    _footer(fig, f'{label} · Analysis 36 · Mean±std of GMM objective across valid random starts per spec')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '19_objective_spec_comparison.png')
+    _savefig(fig, out_dir, '36_objective_spec_comparison.png')
 
 
 def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict],
                                       label: str, out_dir: Path):
-    """Analysis 20 — 2×2 panel: 4 elasticities for one product pair across all simulations."""
+    """Analysis 30 — 2×2 panel: 4 elasticities for one product pair across all simulations."""
     # Spec with lowest mean objective
     by_spec_obj: dict[str, list[float]] = {}
     for r in all_rows:
         by_spec_obj.setdefault(r['spec'], []).append(float(r['objective']))
     if not by_spec_obj:
-        print(f'  [{label}] No data — skipping 20_elasticity_pair_across_sims.png')
+        print(f'  [{label}] No data — skipping 30_elasticity_pair_across_sims.png')
         return
     ranked_specs = sorted(by_spec_obj, key=lambda s: sum(by_spec_obj[s]) / len(by_spec_obj[s]))
     elas_specs   = {r['spec'] for r in elas_rows}
     best_spec    = next((s for s in ranked_specs if s in elas_specs), None)
     if best_spec is None:
-        print(f'  [{label}] No spec with elasticity data — skipping 20_elasticity_pair_across_sims.png')
+        print(f'  [{label}] No spec with elasticity data — skipping 30_elasticity_pair_across_sims.png')
         return
 
     # Product pair with highest mean cross-price elasticity
@@ -1203,7 +1203,7 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
         if r['spec'] == best_spec and r['own_price'] == 'False':
             cross.setdefault((r['product_j'], r['product_k']), []).append(float(r['elasticity']))
     if not cross:
-        print(f'  [{label}] No cross-price rows for best spec — skipping 20_elasticity_pair_across_sims.png')
+        print(f'  [{label}] No cross-price rows for best spec — skipping 30_elasticity_pair_across_sims.png')
         return
     prod_j, prod_k = max(cross, key=lambda p: sum(cross[p]) / len(cross[p]))
 
@@ -1226,7 +1226,7 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
 
     sorted_seeds, _ = _numeric_seed_sort(list(seeds_data))
     if not sorted_seeds:
-        print(f'  [{label}] No seed data — skipping 20_elasticity_pair_across_sims.png')
+        print(f'  [{label}] No seed data — skipping 30_elasticity_pair_across_sims.png')
         return
 
     panel_info = [
@@ -1253,19 +1253,19 @@ def plot_elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict]
     fig.suptitle(f'{label} — Elasticity pair across simulations\n'
                  f'Spec: {short_spec}\nPair  j={prod_j}, k={prod_k}',
                  fontweight='bold', fontsize=9, y=1.01)
-    _footer(fig, f'{label} · Analysis 20 · 4 elasticities for selected pair across all seeds of best-mean-obj spec'
+    _footer(fig, f'{label} · Analysis 30 · 4 elasticities for selected pair across all seeds of best-mean-obj spec'
                  f' · outliers (outside Q1−3·IQR, Q3+3·IQR) shown as labeled edge triangles')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '20_elasticity_pair_across_sims.png')
+    _savefig(fig, out_dir, '30_elasticity_pair_across_sims.png')
 
 
 def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: list[dict],
                                                label: str, out_dir: Path):
-    """Analysis 21 — 2×2 panel: 4 elasticities for one pair, one best-simulation per spec."""
+    """Analysis 31 — 2×2 panel: 4 elasticities for one pair, one best-simulation per spec."""
     # Step 1: best seed per spec (sorted by objective)
     best_list = _best_per_spec(all_rows)
     if not best_list:
-        print(f'  [{label}] No data — skipping 21_elasticity_pair_best_sim_across_specs.png')
+        print(f'  [{label}] No data — skipping 31_elasticity_pair_best_sim_across_specs.png')
         return
 
     # Step 2: collect cross-price pairs available for each spec's best seed
@@ -1280,7 +1280,7 @@ def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: 
             spec_cross[spec] = pairs
 
     if not spec_cross:
-        print(f'  [{label}] No elasticity data for any spec\'s best seed — skipping 21_elasticity_pair_best_sim_across_specs.png')
+        print(f'  [{label}] No elasticity data for any spec\'s best seed — skipping 31_elasticity_pair_best_sim_across_specs.png')
         return
 
     # Step 3: select pair by coverage then mean cross-elasticity
@@ -1315,7 +1315,7 @@ def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: 
         spec_vals.append((spec, _short(spec, 30), vals))
 
     if not spec_vals:
-        print(f'  [{label}] No data after filtering — skipping 21_elasticity_pair_best_sim_across_specs.png')
+        print(f'  [{label}] No data after filtering — skipping 31_elasticity_pair_best_sim_across_specs.png')
         return
 
     full_specs  = [sv[0] for sv in spec_vals]
@@ -1365,24 +1365,24 @@ def plot_elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: 
     fig.suptitle(f'{label} — Elasticity pair: best simulation per spec\n'
                  f'Pair  j={prod_j}, k={prod_k}  ·  one point = best seed of each spec',
                  fontweight='bold', fontsize=9, y=1.01)
-    _footer(fig, f'{label} · Analysis 21 · 4 elasticities for selected pair, best-seed per spec, sorted by objective'
+    _footer(fig, f'{label} · Analysis 31 · 4 elasticities for selected pair, best-seed per spec, sorted by objective'
                  f' · outliers (outside Q1−3·IQR, Q3+3·IQR) shown as labeled edge triangles')
     if key_text:
         # Position the key just above the footer
         fig.text(0.5, 0.035, key_text, ha='center', va='bottom',
                  fontsize=7, family='monospace', color='black')
     plt.tight_layout(rect=[0, bottom_rect, 1, 1])
-    _savefig(fig, out_dir, '21_elasticity_pair_best_sim_across_specs.png')
+    _savefig(fig, out_dir, '31_elasticity_pair_best_sim_across_specs.png')
 
 
 def plot_price_coef_across_sims(rows: list[dict], label: str, out_dir: Path):
-    """Analysis 22 — price coefficients across all simulations of the best-mean-obj spec."""
+    """Analysis 19 — price coefficients across all simulations of the best-mean-obj spec."""
     # Spec with lowest mean objective
     by_spec: dict[str, list[dict]] = {}
     for r in rows:
         by_spec.setdefault(r['spec'], []).append(r)
     if not by_spec:
-        print(f'  [{label}] No data — skipping 22_price_coef_across_sims.png')
+        print(f'  [{label}] No data — skipping 19_price_coef_across_sims.png')
         return
 
     best_spec = min(by_spec,
@@ -1419,10 +1419,10 @@ def plot_price_coef_across_sims(rows: list[dict], label: str, out_dir: Path):
 
     fig.suptitle(f'{label} — Price coefficient across simulations\nSpec: {short_spec}',
                  fontweight='bold', fontsize=9, y=1.01)
-    _footer(fig, f'{label} · Analysis 22 · Price coef per simulation for best-mean-obj spec'
+    _footer(fig, f'{label} · Analysis 19 · Price coef per simulation for best-mean-obj spec'
                  f' · outliers (outside Q1−3·IQR, Q3+3·IQR) shown as labeled edge triangles')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    _savefig(fig, out_dir, '22_price_coef_across_sims.png')
+    _savefig(fig, out_dir, '19_price_coef_across_sims.png')
 
 
 # ---------------------------------------------------------------------------
