@@ -10,23 +10,23 @@ Reads (prefers nested csv/ subdir, falls back to flat layout):
 
 Outputs analysis tables to stdout covering:
   [Both]  01. Objective ranking across specs
-          04. Price coefficient sensitivity
-          05. Multi-start convergence stability
-          06. Convergence audit (valid vs invalid starts)
-          07. Global minimum identification
-          08. Two-basin analysis
-          09. Starting-value sensitivity for valid starts
-          10. Own-price elasticity summary by spec (ranked by objective)
-          11. Elasticity stability across multi-start seeds
-          12. Top substitutes per product (best spec)
-          13. Cross-price elasticity asymmetry (best spec)
-          16. Own-price elasticity product-level cross-spec stability
-          17. Cross-price elasticity cross-spec stability (top substitute pairs)
-          18. Pairwise spec agreement matrix (mean absolute deviation of own-price)
-  [Nevo]  02. Demographic expansion effect (fixed X2)
-          03. X2 characteristic comparison (fixed demographics)
-          14. Cross-spec Spearman rank correlation of own-price elasticities
-          15. Within-firm vs between-firm substitution patterns
+          02. Multi-start convergence stability
+          03. Convergence audit (valid vs invalid starts)
+          04. Global minimum identification
+          05. Two-basin analysis
+          07. Price coefficient sensitivity
+          20. Own-price elasticity summary by spec (ranked by objective)
+          21. Elasticity stability across multi-start seeds
+          22. Top substitutes per product (best spec)
+          23. Cross-price elasticity asymmetry (best spec)
+          26. Own-price elasticity product-level cross-spec stability
+          27. Cross-price elasticity cross-spec stability (top substitute pairs)
+          28. Pairwise spec agreement matrix (mean absolute deviation of own-price)
+          39. Starting-value sensitivity for valid starts
+  [Nevo]  24. Cross-spec Spearman rank correlation of own-price elasticities
+          25. Within-firm vs between-firm substitution patterns
+          37. Demographic expansion effect (fixed X2)
+          38. X2 characteristic comparison (fixed demographics)
 """
 
 import contextlib
@@ -375,7 +375,7 @@ def starting_value_sensitivity(rows: list[dict], label: str = ''):
 # ---------------------------------------------------------------------------
 
 def elasticity_own_summary(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
-    """Analysis 10: own-price elasticity summary per spec, ranked by objective."""
+    """Analysis 20: own-price elasticity summary per spec, ranked by objective."""
     _header(f'{label} -- Own-price elasticity summary by specification (ranked by objective)')
 
     best_list = _best_per_spec(all_rows)
@@ -403,7 +403,7 @@ def elasticity_own_summary(elas_rows: list[dict], all_rows: list[dict], label: s
 
 
 def elasticity_multistart_stability(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
-    """Analysis 11: per-product own-price elasticity spread across seeds."""
+    """Analysis 21: per-product own-price elasticity spread across seeds."""
     _header(f'{label} -- Own-price elasticity stability across multi-start seeds')
 
     # Find specs that have more than one seed in elas_rows
@@ -444,7 +444,7 @@ def elasticity_multistart_stability(elas_rows: list[dict], all_rows: list[dict],
 
 def elasticity_top_substitutes(elas_rows: list[dict], all_rows: list[dict],
                                 label: str = '', top_k: int = 5):
-    """Analysis 12: top-k substitute products by cross-price elasticity (best spec)."""
+    """Analysis 22: top-k substitute products by cross-price elasticity (best spec)."""
     _header(f'{label} -- Top-{top_k} substitutes per product (best spec by objective)')
 
     best_list = _best_per_spec(all_rows)
@@ -491,7 +491,7 @@ def elasticity_top_substitutes(elas_rows: list[dict], all_rows: list[dict],
 
 
 def elasticity_asymmetry(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
-    """Analysis 13: distribution of |e_jk - e_kj| for the best spec."""
+    """Analysis 23: distribution of |e_jk - e_kj| for the best spec."""
     _header(f'{label} -- Cross-price elasticity asymmetry |e_jk - e_kj| (best spec)')
 
     best_list = _best_per_spec(all_rows)
@@ -550,7 +550,7 @@ def elasticity_asymmetry(elas_rows: list[dict], all_rows: list[dict], label: str
 
 def elasticity_own_cross_spec_stability(elas_rows: list[dict], all_rows: list[dict],
                                         label: str = ''):
-    """Analysis 16: per-product own-price elasticity stability across specifications."""
+    """Analysis 26: per-product own-price elasticity stability across specifications."""
     _header(f'{label} -- Own-price elasticity product-level cross-spec stability')
 
     seed_map  = _best_seed_map(all_rows)
@@ -625,7 +625,7 @@ def elasticity_own_cross_spec_stability(elas_rows: list[dict], all_rows: list[di
 
 def elasticity_cross_cross_spec_stability(elas_rows: list[dict], all_rows: list[dict],
                                           label: str = '', top_k: int = 10):
-    """Analysis 17: cross-price elasticity stability for top substitute pairs across specs."""
+    """Analysis 27: cross-price elasticity stability for top substitute pairs across specs."""
     _header(f'{label} -- Cross-price elasticity cross-spec stability (top-{top_k} substitute pairs)')
 
     seed_map  = _best_seed_map(all_rows)
@@ -715,7 +715,7 @@ def elasticity_cross_cross_spec_stability(elas_rows: list[dict], all_rows: list[
 
 
 def elasticity_spec_pairwise_mad(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
-    """Analysis 18: pairwise mean absolute deviation of own-price elasticities between specs."""
+    """Analysis 28: pairwise mean absolute deviation of own-price elasticities between specs."""
     _header(f'{label} -- Pairwise spec agreement: mean absolute deviation of own-price elasticities')
 
     seed_map  = _best_seed_map(all_rows)
@@ -845,7 +845,7 @@ def nevo_x2_comparison(rows: list[dict]):
 
 
 def nevo_elasticity_cross_spec_correlation(elas_rows: list[dict], all_rows: list[dict]):
-    """Analysis 14: Spearman rank correlation of own-price elasticities across specs."""
+    """Analysis 24: Spearman rank correlation of own-price elasticities across specs."""
     _header('NEVO -- Cross-spec Spearman rank correlation of own-price elasticities')
 
     seed_map  = _best_seed_map(all_rows)
@@ -908,7 +908,7 @@ def nevo_elasticity_cross_spec_correlation(elas_rows: list[dict], all_rows: list
 
 
 def nevo_elasticity_firm_substitution(elas_rows: list[dict], all_rows: list[dict]):
-    """Analysis 15: within-firm vs between-firm cross-price elasticities."""
+    """Analysis 25: within-firm vs between-firm cross-price elasticities."""
     _header('NEVO -- Within-firm vs between-firm substitution patterns')
 
     def _firm(product_id: str) -> str:
@@ -975,7 +975,7 @@ def nevo_elasticity_firm_substitution(elas_rows: list[dict], all_rows: list[dict
 # ---------------------------------------------------------------------------
 
 def objective_spec_comparison(rows: list[dict], label: str = ''):
-    """Analysis 19 — aggregate and compare objective values across all starts per spec."""
+    """Analysis 36 — aggregate and compare objective values across all starts per spec."""
     _header(f'{label} -- Objective aggregation across specifications (all starts)')
 
     by_spec: dict[str, list[float]] = {}
@@ -1015,7 +1015,7 @@ def objective_spec_comparison(rows: list[dict], label: str = ''):
 
 
 def elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
-    """Analysis 20 — 4 elasticities for one product pair across all simulations of the best-mean-obj spec."""
+    """Analysis 30 — 4 elasticities for one product pair across all simulations of the best-mean-obj spec."""
     _header(f'{label} -- Elasticity pair behavior across all simulations (best-mean-obj spec)')
 
     # 1. Spec with lowest mean objective across all its starts
@@ -1093,7 +1093,7 @@ def elasticity_pair_across_sims(elas_rows: list[dict], all_rows: list[dict], lab
 
 
 def elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: list[dict], label: str = ''):
-    """Analysis 21 — 4 elasticities for one product pair, one best-simulation per spec, across all specs."""
+    """Analysis 31 — 4 elasticities for one product pair, one best-simulation per spec, across all specs."""
     _header(f'{label} -- Elasticity pair: best simulation per spec, compared across specifications')
 
     # Step 1: best seed per spec (sorted by objective ascending)
@@ -1183,7 +1183,7 @@ def elasticity_pair_best_sim_across_specs(elas_rows: list[dict], all_rows: list[
 
 
 def price_coef_across_sims(rows: list[dict], label: str = ''):
-    """Analysis 22 — price coefficients across all simulations of the best-mean-obj spec."""
+    """Analysis 19 — price coefficients across all simulations of the best-mean-obj spec."""
     _header(f'{label} -- Price coefficient across all simulations (best-mean-obj spec)')
 
     # Spec with lowest mean objective across all its starts
@@ -1241,23 +1241,23 @@ def main():
         print(f'  capped to <= {MAX_SEEDS_PER_SPEC} seeds/spec: {len(blp_rows)} starts\n')
 
         _run_and_save(blp_analysis_dir, '01_objective_ranking.txt',              objective_ranking,                    blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '05_multistart_stability.txt',           multistart_stability,                 blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '06_convergence_audit.txt',              convergence_audit,                    blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '07_global_minimum.txt',                 global_minimum,                       blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '08_two_basin_analysis.txt',             two_basin_analysis,                   blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '10_elasticity_own_summary.txt',         elasticity_own_summary,               blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '19_objective_spec_comparison.txt',             objective_spec_comparison,             blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, blp_elas_rows, blp_rows, 'BLP')
-        _run_and_save(blp_analysis_dir, '22_price_coef_across_sims.txt',               price_coef_across_sims,                blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '07_price_coef_sensitivity.txt',         price_coef_sensitivity,               blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '02_multistart_stability.txt',           multistart_stability,                 blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '03_convergence_audit.txt',              convergence_audit,                    blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '04_global_minimum.txt',                 global_minimum,                       blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '05_two_basin_analysis.txt',             two_basin_analysis,                   blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '39_starting_value_sensitivity.txt',     starting_value_sensitivity,           blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '20_elasticity_own_summary.txt',         elasticity_own_summary,               blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '21_elasticity_multistart_stability.txt', elasticity_multistart_stability,     blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '22_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '23_elasticity_asymmetry.txt',           elasticity_asymmetry,                 blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '26_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '27_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '28_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '36_objective_spec_comparison.txt',             objective_spec_comparison,             blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '30_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '31_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, blp_elas_rows, blp_rows, 'BLP')
+        _run_and_save(blp_analysis_dir, '19_price_coef_across_sims.txt',               price_coef_across_sims,                blp_rows, 'BLP')
         completed.append(blp_analysis_dir)
     except FileNotFoundError as e:
         print(f'[WARN] Skipping BLP analyses: {e}\n')
@@ -1275,27 +1275,27 @@ def main():
         print(f'  capped to <= {MAX_SEEDS_PER_SPEC} seeds/spec: {len(nevo_rows)} starts\n')
 
         _run_and_save(nevo_analysis_dir, '01_objective_ranking.txt',              objective_ranking,                    nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '02_demographic_expansion.txt',          nevo_demographic_expansion,           nevo_rows)
-        _run_and_save(nevo_analysis_dir, '03_x2_comparison.txt',                  nevo_x2_comparison,                   nevo_rows)
-        _run_and_save(nevo_analysis_dir, '04_price_coef_sensitivity.txt',         price_coef_sensitivity,               nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '05_multistart_stability.txt',           multistart_stability,                 nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '06_convergence_audit.txt',              convergence_audit,                    nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '07_global_minimum.txt',                 global_minimum,                       nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '08_two_basin_analysis.txt',             two_basin_analysis,                   nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '09_starting_value_sensitivity.txt',     starting_value_sensitivity,           nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '10_elasticity_own_summary.txt',         elasticity_own_summary,               nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '11_elasticity_multistart_stability.txt', elasticity_multistart_stability,     nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '12_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '13_elasticity_asymmetry.txt',           elasticity_asymmetry,                 nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '14_elasticity_cross_spec_correlation.txt', nevo_elasticity_cross_spec_correlation, nevo_elas_rows, nevo_rows)
-        _run_and_save(nevo_analysis_dir, '15_elasticity_firm_substitution.txt',   nevo_elasticity_firm_substitution,    nevo_elas_rows, nevo_rows)
-        _run_and_save(nevo_analysis_dir, '16_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '17_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '18_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '19_objective_spec_comparison.txt',             objective_spec_comparison,             nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '20_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '21_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, nevo_elas_rows, nevo_rows, 'NEVO')
-        _run_and_save(nevo_analysis_dir, '22_price_coef_across_sims.txt',               price_coef_across_sims,                nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '37_demographic_expansion.txt',          nevo_demographic_expansion,           nevo_rows)
+        _run_and_save(nevo_analysis_dir, '38_x2_comparison.txt',                  nevo_x2_comparison,                   nevo_rows)
+        _run_and_save(nevo_analysis_dir, '07_price_coef_sensitivity.txt',         price_coef_sensitivity,               nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '02_multistart_stability.txt',           multistart_stability,                 nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '03_convergence_audit.txt',              convergence_audit,                    nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '04_global_minimum.txt',                 global_minimum,                       nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '05_two_basin_analysis.txt',             two_basin_analysis,                   nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '39_starting_value_sensitivity.txt',     starting_value_sensitivity,           nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '20_elasticity_own_summary.txt',         elasticity_own_summary,               nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '21_elasticity_multistart_stability.txt', elasticity_multistart_stability,     nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '22_elasticity_top_substitutes.txt',     elasticity_top_substitutes,           nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '23_elasticity_asymmetry.txt',           elasticity_asymmetry,                 nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '24_elasticity_cross_spec_correlation.txt', nevo_elasticity_cross_spec_correlation, nevo_elas_rows, nevo_rows)
+        _run_and_save(nevo_analysis_dir, '25_elasticity_firm_substitution.txt',   nevo_elasticity_firm_substitution,    nevo_elas_rows, nevo_rows)
+        _run_and_save(nevo_analysis_dir, '26_elasticity_own_cross_spec_stability.txt',   elasticity_own_cross_spec_stability,   nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '27_elasticity_cross_cross_spec_stability.txt', elasticity_cross_cross_spec_stability, nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '28_elasticity_spec_pairwise_mad.txt',          elasticity_spec_pairwise_mad,          nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '36_objective_spec_comparison.txt',             objective_spec_comparison,             nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '30_elasticity_pair_across_sims.txt',           elasticity_pair_across_sims,           nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '31_elasticity_pair_best_sim_across_specs.txt', elasticity_pair_best_sim_across_specs, nevo_elas_rows, nevo_rows, 'NEVO')
+        _run_and_save(nevo_analysis_dir, '19_price_coef_across_sims.txt',               price_coef_across_sims,                nevo_rows, 'NEVO')
         completed.append(nevo_analysis_dir)
     except FileNotFoundError as e:
         print(f'[WARN] Skipping Nevo analyses: {e}\n')
