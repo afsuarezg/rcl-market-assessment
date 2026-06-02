@@ -15,6 +15,8 @@ from itertools import combinations
 from pathlib import Path
 from typing import NamedTuple, Optional
 
+from solve_diagnostics import extract_solve_diagnostics
+
 pyblp.options.digits = 2
 pyblp.options.verbose = False
 
@@ -568,6 +570,18 @@ def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True) -> None:
     df.to_csv(path, index=index)
 
 
+def _record_diag(diag_rows, res_or_exc, *, stage, seed, label,
+                 note="", always=False) -> None:
+    """Append a diagnostics row for a failed / non-converged solve.
+
+    Converged results are skipped unless ``always=True`` (used for caught
+    exceptions, which are failure events regardless of convergence flags).
+    """
+    diag = extract_solve_diagnostics(res_or_exc, stage=stage, seed=seed, note=note)
+    if always or diag["outcome"] != "converged":
+        diag_rows.append({"spec": label, **diag})
+
+
 def main(
     x2_combos:    Optional[list[list[str]]] = None,
     demo_combos:  Optional[list[list[str]]] = None,
@@ -593,6 +607,7 @@ def main(
     OPT_BEST_CSV = OUT_DIR / 'multistart_best.csv'
     POST_CSV     = OUT_DIR / 'post_estimation_summary.csv'
     ELAST_CSV    = OUT_DIR / 'elasticities_detail.csv'
+    DIAG_CSV     = OUT_DIR / 'solve_diagnostics.csv'
 
     product_data, agent_data = load_data()
 
@@ -632,6 +647,9 @@ def main(
             else:
                 n_to_run = n_starts
 
+            # Diagnostics for failed / non-converged solves (this spec).
+            diag_rows: list[dict] = []
+
             # ── Stage 1: multi-start ──────────────────────────────────────────
             print(f"\nSolving ({n_to_run} starts): {label}, "
                   f"base_seed={base_seed}, existing={n_existing}/{target_seeds}")
@@ -642,15 +660,30 @@ def main(
             _append_csv(raw_detail, RAW_ALL_CSV, index=False)
             print(f"Saved: multistart_raw_all.csv  [{label}]")
 
+            for sr in starts:                              # non-converged stage-1 starts
+                _record_diag(diag_rows, sr.result, stage="stage1_solve",
+                             seed=sr.seed, label=label)
+
             # ── Stage 2: optimal instruments ─────────────────────────────────
             print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
             opt_starts = []
             for sr in starts:
                 try:
-                    opt_starts.append(apply_optimal_instruments(sr))
+                    opt_sr = apply_optimal_instruments(sr)
+                    opt_starts.append(opt_sr)
+                    _record_diag(diag_rows, opt_sr.result, stage="stage2_opt_iv",
+                                 seed=sr.seed, label=label)   # logged only if not converged
                 except Exception as exc:
                     print(f"  [skip] stage-2 optimal IV failed for seed={sr.seed}: "
                           f"{type(exc).__name__}: {exc}")
+                    _record_diag(diag_rows, exc, stage="stage2_opt_iv",
+                                 seed=sr.seed, label=label, always=True)
+
+            if diag_rows:
+                _append_csv(pd.DataFrame(diag_rows), DIAG_CSV, index=False)
+                print(f"Saved: solve_diagnostics.csv  [{label}] "
+                      f"({len(diag_rows)} failed/non-converged row(s))")
+
             if not opt_starts:
                 print(f"All stage-2 solves failed for {label}; "
                       f"skipping downstream outputs.")
