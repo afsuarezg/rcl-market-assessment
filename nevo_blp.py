@@ -245,7 +245,7 @@ def run_multistart(
     integration_size: int = 5,
     gtol: float = 1e-5,
     method: str = '1s',
-) -> list[StartResult]:
+) -> tuple[list[StartResult], list[tuple[int, Exception]]]:
     """
     Solve a specification n_starts times from different random starting points.
 
@@ -253,7 +253,11 @@ def run_multistart(
     otherwise. Starts 1..n_starts-1 always use fresh random draws (force_random=True)
     with seed = base_seed + start_index to ensure reproducibility.
 
-    Returns StartResult objects sorted ascending by objective (best = index 0).
+    A start whose solve raises is collected instead of killing the batch.
+
+    Returns (results, failures): StartResult objects sorted ascending by
+    objective (best = index 0), and (seed, exception) pairs for starts that
+    raised, so callers can record them as diagnostics.
     Each StartResult exposes .result, .sigma_init, and .pi_init.
     """
     problem = build_problem(
@@ -264,6 +268,7 @@ def run_multistart(
     n_instr = len([c for c in product_data.columns if c.startswith('demand_instruments')])
 
     results = []
+    failures: list[tuple[int, Exception]] = []
     for i in range(n_starts):
         seed = base_seed + i
         force_random = (i > 0)   # start 0 uses Nevo values when applicable
@@ -273,10 +278,16 @@ def run_multistart(
             seed=seed,
             force_random=force_random,
         )
-        res = solve_spec(problem, sigma_init, pi_init, gtol=gtol, method=method)
+        try:
+            res = solve_spec(problem, sigma_init, pi_init, gtol=gtol, method=method)
+        except Exception as exc:  # noqa: BLE001 — one bad start must not kill the batch
+            print(f"  Dropping seed {seed}: stage-1 solve raised "
+                  f"({type(exc).__name__}: {exc}).")
+            failures.append((seed, exc))
+            continue
         results.append(StartResult(result=res, sigma_init=sigma_init, pi_init=pi_init, seed=seed))
 
-    return sorted(results, key=lambda sr: float(sr.result.objective))
+    return sorted(results, key=lambda sr: float(sr.result.objective)), failures
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -582,6 +593,19 @@ def _record_diag(diag_rows, res_or_exc, *, stage, seed, label,
         diag_rows.append({"spec": label, **diag})
 
 
+def _flush_diag(diag_rows: list[dict], path: Path, label: str) -> None:
+    """Append accumulated diagnostics rows to path and clear the buffer.
+
+    Called after each stage (not just at the end of a spec) so a crash or
+    walltime kill cannot lose already-collected diagnostics.
+    """
+    if diag_rows:
+        _append_csv(pd.DataFrame(diag_rows), path, index=False)
+        print(f"Saved: {path.name}  [{label}] "
+              f"({len(diag_rows)} failed/non-converged row(s))")
+        diag_rows.clear()
+
+
 def main(
     x2_combos:    Optional[list[list[str]]] = None,
     demo_combos:  Optional[list[list[str]]] = None,
@@ -615,6 +639,7 @@ def main(
         out: dict[str, set[int]] = {}
         if path.exists():
             df = pd.read_csv(path, usecols=['spec', 'seed'])
+            df['seed'] = pd.to_numeric(df['seed'], errors='coerce')
             df = df[df['seed'].notna()]
             for spec_label, grp in df.groupby('spec'):
                 out[spec_label] = set(grp['seed'].astype(int))
@@ -625,9 +650,13 @@ def main(
     # reaches multistart_all.csv, so counting raw stage-1 seeds would mark a spec
     # "done" while it is still short of the target there.
     converged_seeds_per_spec = _seeds_by_spec(OPT_ALL_CSV)
-    # Attempted seeds (RAW_ALL_CSV) are unioned in only to pick a collision-free
-    # base_seed, never to count progress toward the target.
+    # Attempted seeds (RAW_ALL_CSV) and failed seeds (DIAG_CSV, for starts that
+    # raised before reaching the raw CSV) are unioned in only to pick a
+    # collision-free base_seed, never to count progress toward the target.
+    # Without the DIAG union a deterministically-failing seed would be retried
+    # (and fail identically) on every top-up run.
     attempted_seeds_per_spec = _seeds_by_spec(RAW_ALL_CSV)
+    failed_seeds_per_spec    = _seeds_by_spec(DIAG_CSV)
 
     for x2 in x2_combos:
         for demos in demo_combos:
@@ -635,7 +664,9 @@ def main(
 
             existing_seeds = converged_seeds_per_spec.get(label, set())
             n_existing     = len(existing_seeds)
-            used_seeds     = existing_seeds | attempted_seeds_per_spec.get(label, set())
+            used_seeds     = (existing_seeds
+                              | attempted_seeds_per_spec.get(label, set())
+                              | failed_seeds_per_spec.get(label, set()))
             base_seed      = max(used_seeds) + 1 if used_seeds else 0
 
             if n_starts is None:
@@ -650,66 +681,75 @@ def main(
             # Diagnostics for failed / non-converged solves (this spec).
             diag_rows: list[dict] = []
 
-            # ── Stage 1: multi-start ──────────────────────────────────────────
-            print(f"\nSolving ({n_to_run} starts): {label}, "
-                  f"base_seed={base_seed}, existing={n_existing}/{target_seeds}")
-            starts = run_multistart(
-                product_data, agent_data, x2, demos, n_starts=n_to_run, base_seed=base_seed,
-            )
-            raw_detail = compare_multistart_results({label: starts})
-            _append_csv(raw_detail, RAW_ALL_CSV, index=False)
-            print(f"Saved: multistart_raw_all.csv  [{label}]")
+            try:
+                # ── Stage 1: multi-start ──────────────────────────────────────
+                print(f"\nSolving ({n_to_run} starts): {label}, "
+                      f"base_seed={base_seed}, existing={n_existing}/{target_seeds}")
+                starts, stage1_failures = run_multistart(
+                    product_data, agent_data, x2, demos, n_starts=n_to_run, base_seed=base_seed,
+                )
+                for seed, exc in stage1_failures:          # starts whose solve raised
+                    _record_diag(diag_rows, exc, stage="stage1_solve",
+                                 seed=seed, label=label, always=True)
 
-            for sr in starts:                              # non-converged stage-1 starts
-                _record_diag(diag_rows, sr.result, stage="stage1_solve",
-                             seed=sr.seed, label=label)
+                if starts:
+                    raw_detail = compare_multistart_results({label: starts})
+                    _append_csv(raw_detail, RAW_ALL_CSV, index=False)
+                    print(f"Saved: multistart_raw_all.csv  [{label}]")
 
-            # ── Stage 2: optimal instruments ─────────────────────────────────
-            print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
-            opt_starts = []
-            for sr in starts:
-                try:
-                    opt_sr = apply_optimal_instruments(sr)
-                    opt_starts.append(opt_sr)
-                    _record_diag(diag_rows, opt_sr.result, stage="stage2_opt_iv",
-                                 seed=sr.seed, label=label)   # logged only if not converged
-                except Exception as exc:
-                    print(f"  [skip] stage-2 optimal IV failed for seed={sr.seed}: "
-                          f"{type(exc).__name__}: {exc}")
-                    _record_diag(diag_rows, exc, stage="stage2_opt_iv",
-                                 seed=sr.seed, label=label, always=True)
+                for sr in starts:                          # non-converged stage-1 starts
+                    _record_diag(diag_rows, sr.result, stage="stage1_solve",
+                                 seed=sr.seed, label=label)
+                _flush_diag(diag_rows, DIAG_CSV, label)    # stage-1 diags survive a stage-2 crash
 
-            if diag_rows:
-                _append_csv(pd.DataFrame(diag_rows), DIAG_CSV, index=False)
-                print(f"Saved: solve_diagnostics.csv  [{label}] "
-                      f"({len(diag_rows)} failed/non-converged row(s))")
+                # ── Stage 2: optimal instruments ─────────────────────────────
+                print(f"\nApplying optimal instruments: {label} ({len(starts)} start(s))")
+                opt_starts = []
+                for sr in starts:
+                    try:
+                        opt_sr = apply_optimal_instruments(sr)
+                        opt_starts.append(opt_sr)
+                        _record_diag(diag_rows, opt_sr.result, stage="stage2_opt_iv",
+                                     seed=sr.seed, label=label)   # logged only if not converged
+                    except Exception as exc:
+                        print(f"  [skip] stage-2 optimal IV failed for seed={sr.seed}: "
+                              f"{type(exc).__name__}: {exc}")
+                        _record_diag(diag_rows, exc, stage="stage2_opt_iv",
+                                     seed=sr.seed, label=label, always=True)
 
-            if not opt_starts:
-                print(f"All stage-2 solves failed for {label}; "
-                      f"skipping downstream outputs.")
-                continue
-            opt_starts = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
+                _flush_diag(diag_rows, DIAG_CSV, label)
 
-            opt_detail = compare_multistart_results({label: opt_starts})
-            print("\n=== All Starts ===")
-            print(opt_detail.to_string(index=False))
-            _append_csv(opt_detail, OPT_ALL_CSV, index=False)
+                if not opt_starts:
+                    print(f"All stage-2 solves failed for {label}; "
+                          f"skipping downstream outputs.")
+                    continue
+                opt_starts = sorted(opt_starts, key=lambda sr: float(sr.result.objective))
 
-            opt_best = opt_detail[opt_detail['best']].drop(columns='best').set_index('spec')
-            print("\n=== Best per Specification ===")
-            print(opt_best.to_string())
-            _append_csv(opt_best, OPT_BEST_CSV)
+                opt_detail = compare_multistart_results({label: opt_starts})
+                print("\n=== All Starts ===")
+                print(opt_detail.to_string(index=False))
+                _append_csv(opt_detail, OPT_ALL_CSV, index=False)
 
-            post = summarise_post_estimation({label: opt_starts}, product_data, include_supply=False)
-            print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
-            print(post.to_string())
-            _append_csv(post, POST_CSV)
+                opt_best = opt_detail[opt_detail['best']].drop(columns='best').set_index('spec')
+                print("\n=== Best per Specification ===")
+                print(opt_best.to_string())
+                _append_csv(opt_best, OPT_BEST_CSV)
 
-            elast = export_elasticities({label: opt_starts}, product_data)
-            _append_csv(elast, ELAST_CSV, index=False)
+                post = summarise_post_estimation({label: opt_starts}, product_data, include_supply=False)
+                print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
+                print(post.to_string())
+                _append_csv(post, POST_CSV)
 
-            print(f"Saved: multistart_all.csv, multistart_best.csv, "
-                  f"post_estimation_summary.csv, elasticities_detail.csv  [{label}]")
+                elast = export_elasticities({label: opt_starts}, product_data)
+                _append_csv(elast, ELAST_CSV, index=False)
+
+                print(f"Saved: multistart_all.csv, multistart_best.csv, "
+                      f"post_estimation_summary.csv, elasticities_detail.csv  [{label}]")
+            except Exception as exc:  # noqa: BLE001 — one bad spec must not kill the sweep
+                print(f"  [spec failed] {label}: {type(exc).__name__}: {exc}")
+                _record_diag(diag_rows, exc, stage="spec_fatal",
+                             seed=None, label=label, always=True)
+                _flush_diag(diag_rows, DIAG_CSV, label)
 
 
 if __name__ == '__main__':
