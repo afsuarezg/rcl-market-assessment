@@ -33,15 +33,11 @@ def summarize_diagnostics(csv_path: Path) -> pd.DataFrame:
     top_error_class — most frequent error class among the raises ('' if none)
     """
     df = pd.read_csv(csv_path, usecols=["spec", "seed", "outcome", "error_classes"])
-    g = df.groupby("spec")
-    out = pd.DataFrame({
-        "n_seeds_flagged": g["seed"].nunique(),
-        "n_seeds_error":   g.apply(
-            lambda d: d.loc[d["outcome"] == "error", "seed"].nunique(),
-            include_groups=False,
-        ),
-    })
-    errs = df[df["outcome"] == "error"].dropna(subset=["error_classes"])
+    out = pd.DataFrame({"n_seeds_flagged": df.groupby("spec")["seed"].nunique()})
+    error_rows = df[df["outcome"] == "error"]
+    out["n_seeds_error"] = (error_rows.groupby("spec")["seed"].nunique()
+                                      .reindex(out.index, fill_value=0).astype(int))
+    errs = error_rows.dropna(subset=["error_classes"])
     if not errs.empty:
         out = out.join(errs.groupby("spec")["error_classes"]
                            .agg(lambda s: s.value_counts().index[0])
