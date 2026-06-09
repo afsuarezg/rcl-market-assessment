@@ -27,16 +27,17 @@
 #   input CSVs by checking, in order:
 #       1. <repo>/results/<ds>/...            (_LOCAL_ROOT, i.e. PROJECT_DIR/results)
 #       2. /oak/stanford/groups/polinsky/blp_nevo/results/<ds>/...   (_OAK_ROOT)
-#   and write analysis/ + graphs/ NEXT TO wherever the inputs were found. So the
-#   ONLY way outputs land on OAK is if PROJECT_DIR/results IS the OAK results dir
-#   (repo checked out at the OAK path, the default below) OR PROJECT_DIR/results
-#   does not exist (fresh clone — results/ is gitignored — so the scripts fall
-#   through to the OAK path). A stale/partial PROJECT_DIR/results would shadow
-#   the OAK data and send outputs to the wrong place. The PRECONDITION below
-#   resolves and prints the exact target dirs and ABORTS if they are not under
-#   OAK, so a misconfiguration is caught before any work is done.
+#   and write analysis/ + graphs/ NEXT TO wherever the inputs were found. The
+#   normal case: the repo has no local results/ (fresh clone — results/ is
+#   gitignored), so the scripts fall through to the OAK path and write there.
+#   (If the repo happens to be checked out AT the OAK path, PROJECT_DIR/results
+#   already IS the OAK results dir — also fine.) A stale/partial local results/
+#   would shadow the OAK data and send outputs to the wrong place. The
+#   PRECONDITION below resolves and prints the exact target dirs and ABORTS if
+#   they are not under OAK, so a misconfiguration is caught before any work runs.
 #
-# How to submit (from anywhere on Sherlock):
+# How to submit (from your repo checkout on Sherlock):
+#       cd <your rcl-market-assessment checkout>
 #       sbatch slurm/postprocess.sbatch
 #
 #   This operates IN PLACE on the existing OAK results/ tree. It runs
@@ -56,12 +57,15 @@
 
 set -euo pipefail
 
-# Where the working copy lives on Sherlock. Default assumes the repo is checked
-# out at the OAK group path, so PROJECT_DIR/results IS the OAK results dir the
-# estimation wrote to. Override on the command line if you put the repo
-# elsewhere (e.g. a clean clone in $HOME — see the gotcha above):
+# Where the repo working copy lives on Sherlock. Defaults to the directory you
+# submitted from (SLURM_SUBMIT_DIR) — i.e. `cd` into your checkout and run
+# `sbatch slurm/postprocess.sbatch`. The repo can live anywhere (e.g. a fresh
+# clone of master in $HOME): the scripts find the input CSVs via their built-in
+# OAK fallback regardless of where the code lives, as long as no local results/
+# shadows it (a fresh clone has none — results/ is gitignored). The precondition
+# below confirms outputs will land on OAK before any work runs. Override with:
 #     sbatch --export=PROJECT_DIR=$HOME/rcl-market-assessment slurm/postprocess.sbatch
-PROJECT_DIR="${PROJECT_DIR:-/oak/stanford/groups/polinsky/blp_nevo}"
+PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
 
 cd "$PROJECT_DIR"
 
