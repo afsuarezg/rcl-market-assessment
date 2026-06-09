@@ -36,9 +36,11 @@
 #   PRECONDITION below resolves and prints the exact target dirs and ABORTS if
 #   they are not under OAK, so a misconfiguration is caught before any work runs.
 #
-# How to submit (from your repo checkout on Sherlock):
-#       cd <your rcl-market-assessment checkout>
-#       sbatch slurm/postprocess.sbatch
+# How to submit:
+#   From a shell, in your checkout:   cd <repo> && sbatch slurm/postprocess.sbatch
+#   Via OnDemand Job Composer:        works as-is IF the repo is cloned at
+#                                     $HOME/rcl-market-assessment (see PROJECT_DIR
+#                                     resolution below); otherwise set PROJECT_DIR.
 #
 #   This operates IN PLACE on the existing OAK results/ tree. It runs
 #   `git pull --ff-only` first to sync the committed code (skippable with
@@ -57,15 +59,30 @@
 
 set -euo pipefail
 
-# Where the repo working copy lives on Sherlock. Defaults to the directory you
-# submitted from (SLURM_SUBMIT_DIR) — i.e. `cd` into your checkout and run
-# `sbatch slurm/postprocess.sbatch`. The repo can live anywhere (e.g. a fresh
-# clone of master in $HOME): the scripts find the input CSVs via their built-in
+# Where the repo working copy lives on Sherlock. Resolved in priority order:
+#   1. An explicit PROJECT_DIR (env or --export) always wins.
+#   2. The submit dir, but ONLY if it's actually the repo. This is true for
+#      `cd <checkout> && sbatch slurm/postprocess.sbatch`, but NOT for OnDemand
+#      Job Composer, which copies the script into a per-job sandbox
+#      (~/ondemand/data/sys/myjobs/projects/...) and submits from there — so
+#      SLURM_SUBMIT_DIR is that throwaway dir, with no pyproject.toml.
+#   3. The conventional clone location $HOME/rcl-market-assessment — so a plain
+#      `git clone` in $HOME + submit-from-anywhere (incl. Job Composer) works
+#      with no edits.
+# The repo can live anywhere: the scripts find the input CSVs via their built-in
 # OAK fallback regardless of where the code lives, as long as no local results/
 # shadows it (a fresh clone has none — results/ is gitignored). The precondition
 # below confirms outputs will land on OAK before any work runs. Override with:
 #     sbatch --export=PROJECT_DIR=$HOME/rcl-market-assessment slurm/postprocess.sbatch
-PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+if [ -n "${PROJECT_DIR:-}" ]; then
+    :                                                       # explicit override wins
+elif [ -f "${SLURM_SUBMIT_DIR:-/nonexistent}/pyproject.toml" ]; then
+    PROJECT_DIR="$SLURM_SUBMIT_DIR"                          # submitted from the repo
+elif [ -f "$HOME/rcl-market-assessment/pyproject.toml" ]; then
+    PROJECT_DIR="$HOME/rcl-market-assessment"                # the conventional clone
+else
+    PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"                # let the guard report it
+fi
 
 cd "$PROJECT_DIR"
 
