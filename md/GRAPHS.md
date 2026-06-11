@@ -125,9 +125,9 @@ Companion to figure 30. Together they answer "do we get the same elasticities wh
 
 ## 36 — `36_objective_spec_comparison.png`
 
-`plot_objective_spec_comparison` (plot_results.py:923). Horizontal bar chart per spec showing mean GMM objective ± 1 std (error bars), with min/max range markers as dashed segments and small `n=<count>` annotations to the right. Bar color = whether *any* of the spec's starts was valid. Specs sorted by mean ascending.
+`plot_objective_spec_comparison` (plot_results.py:1136). Horizontal bar chart, one bar per spec = mean GMM objective across that spec's valid starts (rows are pre-filtered by `_filter_valid`, plot_results.py:1486/:1449, so only `price_coef < 0 AND objective ≥ 0` starts reach the plot). Error bars = ±1 std; dashed `--` segments with `|` end-caps mark the min/max range; `n=<count>` (valid starts per spec) annotated to the right. Bars use a single uniform `COL_VALID` color — validity is *not* encoded, since every plotted start is already valid. Y-axis inverted so the lowest-mean (best) spec sits on top; specs sorted by mean ascending.
 
-Unlike figure 01 (best start only), this is the *distribution* of objectives. A spec with a low mean and a tight error bar = both well-fitting and reliably reachable. Low mean with a wide error bar = the headline number depends on a lucky seed.
+Unlike figure 01 (best valid start only), this is the *distribution* of objectives across valid starts. A spec with a low mean and a tight error bar = both well-fitting and reliably reachable; low mean with a wide error bar = the headline number depends on a lucky seed. (The companion text report — analysis 36 in [`ANALYSIS.md`](ANALYSIS.md) — tabulates the same valid-start distribution, with `N` / `N valid` columns showing how many starts were dropped per spec.)
 
 ## 37 — `37_demographic_expansion.png` (Nevo only)
 

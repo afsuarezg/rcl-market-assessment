@@ -140,7 +140,7 @@ Use it to see how the same product pair's elasticities shift as the model is re-
 
 ## 36 — Objective aggregation across specifications
 
-`objective_spec_comparison(rows, label)` (analyze_results.py:928). Unlike analysis 01 (best valid start only), this aggregates *all* starts per spec: N starts, N valid, mean / median / std / min / max / range / CV% of `objective`. Sorted by mean objective ascending. Ends with cross-spec summary statistics.
+`objective_spec_comparison(rows, label)` (analyze_results.py:979). Unlike analysis 01 (best valid start only), this reports the *distribution* of `objective` across each spec's valid starts — mirroring figure 36. Specs with no valid start are dropped; the statistics (mean / median / std / min / max / range / CV%) are computed over valid starts only, while the `N` / `N valid` columns still show total starts vs valid so attrition stays visible. Sorted by mean objective ascending. Ends with cross-spec summary statistics.
 
 Use it to identify specs that converge tightly (low CV) versus specs that fluctuate — a spec with the lowest *best* objective but very high CV may just be lucky on one seed.
 

@@ -236,10 +236,12 @@ def price_coef_sensitivity(rows: list[dict], label: str = ''):
 
 
 def multistart_stability(rows: list[dict], label: str = ''):
-    _header(f'{label} -- Multi-start convergence stability')
+    _header(f'{label} -- Multi-start convergence stability (valid starts only)')
     from collections import defaultdict
     by_spec: dict[str, list[float]] = defaultdict(list)
     for r in rows:
+        if not _valid(r):
+            continue
         by_spec[r['spec']].append(float(r['objective']))
 
     print(f'  {"N starts":>8}  {"Obj spread":>12}  Specification')
@@ -975,14 +977,27 @@ def nevo_elasticity_firm_substitution(elas_rows: list[dict], all_rows: list[dict
 # ---------------------------------------------------------------------------
 
 def objective_spec_comparison(rows: list[dict], label: str = ''):
-    """Analysis 36 — aggregate and compare objective values across all starts per spec."""
-    _header(f'{label} -- Objective aggregation across specifications (all starts)')
+    """Analysis 36 — aggregate and compare objective values across valid starts per spec.
 
-    by_spec: dict[str, list[float]] = {}
+    Mirrors figure 36 (plot_objective_spec_comparison), which plots valid starts
+    only: specs with no valid start are dropped and every statistic is computed
+    over that spec's valid starts. The N / N valid columns still report total
+    starts vs valid so the attrition stays visible.
+    """
+    _header(f'{label} -- Objective aggregation across specifications (valid starts only)')
+
+    by_spec: dict[str, list[float]] = {}   # valid objectives per spec
+    total_by_spec: dict[str, int] = {}     # all starts per spec, for the N column
     for r in rows:
-        by_spec.setdefault(r['spec'], []).append(float(r['objective']))
+        total_by_spec[r['spec']] = total_by_spec.get(r['spec'], 0) + 1
+        if _valid(r):
+            by_spec.setdefault(r['spec'], []).append(float(r['objective']))
 
-    # Sort specs by mean objective ascending
+    if not by_spec:
+        print('  No valid starts found.\n')
+        return
+
+    # Sort specs by mean objective (valid starts) ascending
     ranked = sorted(by_spec.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
 
     all_objs = [v for vals in by_spec.values() for v in vals]
@@ -993,19 +1008,17 @@ def objective_spec_comparison(rows: list[dict], label: str = ''):
     _sep()
 
     for rank, (spec, objs) in enumerate(ranked, 1):
-        spec_rows = [r for r in rows if r['spec'] == spec]
-        n_valid   = sum(1 for r in spec_rows if _valid(r))
-        s         = _stats(objs)
-        cv        = (s['std'] / s['mean'] * 100) if s['mean'] else float('nan')
-        rng       = s['mx'] - s['mn']
-        print(f'  {rank:>4}  {len(objs):>3}  {n_valid:>7}  {s["mean"]:>10.4f}  {s["median"]:>10.4f}  '
+        s    = _stats(objs)
+        cv   = (s['std'] / s['mean'] * 100) if s['mean'] else float('nan')
+        rng  = s['mx'] - s['mn']
+        print(f'  {rank:>4}  {total_by_spec[spec]:>3}  {len(objs):>7}  {s["mean"]:>10.4f}  {s["median"]:>10.4f}  '
               f'{s["std"]:>9.4f}  {s["mn"]:>10.4f}  {s["mx"]:>10.4f}  {rng:>9.4f}  {cv:>7.2f}  {spec}')
 
     _sep()
-    # Cross-spec summary
+    # Cross-spec summary (valid starts)
     means   = [sum(v) / len(v) for v in by_spec.values()]
     s_means = _stats(means)
-    print(f'\n  Cross-spec summary (N specs = {len(by_spec)}):')
+    print(f'\n  Cross-spec summary (N specs with valid starts = {len(by_spec)}):')
     print(f'    Mean of spec-means : {s_means["mean"]:.4f}')
     print(f'    Std  of spec-means : {s_means["std"]:.4f}')
     print(f'    Best spec mean     : {s_means["mn"]:.4f}')
