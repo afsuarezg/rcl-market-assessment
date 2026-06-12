@@ -161,6 +161,27 @@ def _best_per_spec(rows: list[dict]) -> list[dict]:
     return sorted(result, key=lambda r: float(r['objective']))
 
 
+def _dedupe_seeds(rows: list[dict]) -> list[dict]:
+    """Collapse rows to one per (spec, seed): the best (valid, lowest-objective) start.
+
+    multistart_all.csv is appended across top-up runs, so the same seed can land
+    in more than one row (an identical re-run, or a divergent start that reused
+    the seed). One seed is one simulation, so counting rows would overstate a
+    spec's sample. Prefer a valid row, then the lowest objective — the same rule
+    _best_per_spec uses to pick a spec's representative start.
+    """
+    by_key: dict[tuple[str, str], list[dict]] = {}
+    for r in rows:
+        by_key.setdefault((r['spec'], r['seed']), []).append(r)
+
+    deduped = []
+    for group in by_key.values():
+        valid = [r for r in group if _valid(r)]
+        pool = valid if valid else group
+        deduped.append(min(pool, key=lambda r: float(r['objective'])))
+    return deduped
+
+
 def _best_seed_map(all_rows: list[dict]) -> dict[str, str]:
     """Return {spec: seed} for the best valid start per spec."""
     return {r['spec']: r['seed'] for r in _best_per_spec(all_rows)}
@@ -981,13 +1002,17 @@ def objective_spec_comparison(rows: list[dict], label: str = ''):
 
     Mirrors figure 36 (plot_objective_spec_comparison), which plots valid starts
     only: specs with no valid start are dropped and every statistic is computed
-    over that spec's valid starts. The N / N valid columns still report total
-    starts vs valid so the attrition stays visible.
+    over that spec's valid starts. The N / N valid columns report total unique
+    seeds vs valid unique seeds — rows are first collapsed to one per (spec, seed)
+    so a seed duplicated across appended runs is not double-counted (see
+    _dedupe_seeds) — so the attrition stays visible without inflating N past the
+    per-spec simulation count.
     """
     _header(f'{label} -- Objective aggregation across specifications (valid starts only)')
 
+    rows = _dedupe_seeds(rows)             # one row per (spec, seed): N counts seeds, not rows
     by_spec: dict[str, list[float]] = {}   # valid objectives per spec
-    total_by_spec: dict[str, int] = {}     # all starts per spec, for the N column
+    total_by_spec: dict[str, int] = {}     # unique seeds per spec, for the N column
     for r in rows:
         total_by_spec[r['spec']] = total_by_spec.get(r['spec'], 0) + 1
         if _valid(r):

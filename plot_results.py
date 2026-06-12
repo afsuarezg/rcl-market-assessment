@@ -145,6 +145,24 @@ def _best_per_spec(rows: list[dict]) -> list[dict]:
     return sorted(result, key=lambda r: float(r['objective']))
 
 
+def _dedupe_seeds(rows: list[dict]) -> list[dict]:
+    """Collapse rows to one per (spec, seed): the best (valid, lowest-objective) start.
+
+    Mirror of analyze_results._dedupe_seeds. multistart_all.csv is appended across
+    top-up runs, so the same seed can recur in more than one row; one seed is one
+    simulation, so counting rows would inflate a spec's per-seed sample.
+    """
+    by_key: dict[tuple[str, str], list[dict]] = {}
+    for r in rows:
+        by_key.setdefault((r['spec'], r['seed']), []).append(r)
+    deduped = []
+    for group in by_key.values():
+        valid = [r for r in group if _valid(r)]
+        pool  = valid if valid else group
+        deduped.append(min(pool, key=lambda r: float(r['objective'])))
+    return deduped
+
+
 def _best_seed_map(all_rows: list[dict]) -> dict[str, str]:
     return {r['spec']: r['seed'] for r in _best_per_spec(all_rows)}
 
@@ -1134,7 +1152,13 @@ def plot_nevo_firm_substitution_heatmap(elas_rows: list[dict], all_rows: list[di
 
 
 def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
-    """Analysis 36 — mean ± std of GMM objective across all starts, ranked by mean."""
+    """Analysis 36 — mean ± std of GMM objective across unique seeds, ranked by mean.
+
+    Rows are collapsed to one per (spec, seed) first (see _dedupe_seeds) so the
+    n= annotation and the mean/std/range reflect distinct simulations, not the
+    inflated row count left by duplicate seeds in appended multistart files.
+    """
+    rows = _dedupe_seeds(rows)
     by_spec: dict[str, list[float]] = {}
     for r in rows:
         by_spec.setdefault(r['spec'], []).append(float(r['objective']))

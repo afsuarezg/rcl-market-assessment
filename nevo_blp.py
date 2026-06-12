@@ -573,11 +573,50 @@ def _prompt_combos(options: list[list[str]], label: str) -> list[list[str]]:
     return [options[i] for i in indices]
 
 
-def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True) -> None:
-    """Write df to path, appending below existing rows if the file exists."""
+def _dedupe_multistart(df: pd.DataFrame, *, by: Optional[list], reflag_best: bool) -> pd.DataFrame:
+    """Collapse appended multistart rows to one per key, keeping the lowest objective.
+
+    The multistart_all / _best CSVs are appended across top-up runs, so the same
+    (spec, seed) can recur — an identical re-run, or a divergent start that reused
+    the seed. One seed is one simulation, so each (spec, seed) must fold to a
+    single row: the best (lowest-objective) start. `by` is the list of key columns
+    (None keys on the index, used by the spec-indexed _best file). With
+    reflag_best, the `best` flag is rebuilt so exactly one row per spec — its
+    global-minimum objective — is True (a plain concat leaves one True per run).
+    """
+    if 'objective' not in df.columns:
+        return df
+    df = df.copy()
+    if by is not None:                      # column-keyed: concat left duplicate index labels
+        df = df.reset_index(drop=True)
+    df['__obj'] = pd.to_numeric(df['objective'], errors='coerce')
+    df = df.sort_values(['spec', '__obj'] if 'spec' in df.columns else ['__obj'])
+    if by is None:                          # index-keyed (spec) for the _best file
+        df = df[~df.index.duplicated(keep='first')]
+    else:
+        df = df.drop_duplicates(subset=by, keep='first')
+    if reflag_best and 'best' in df.columns and 'spec' in df.columns:
+        df['best'] = False
+        df.loc[df.groupby('spec')['__obj'].idxmin(), 'best'] = True
+    return df.drop(columns='__obj')
+
+
+def _append_csv(df: pd.DataFrame, path: Path, *, index: bool = True,
+                dedupe: Optional[str] = None) -> None:
+    """Write df to path, appending below existing rows if the file exists.
+
+    `dedupe='all'` folds duplicate (spec, seed) rows after the concat (keeping the
+    lowest objective and rebuilding `best`); `dedupe='best'` folds the spec-indexed
+    best file to one row per spec. Used only for the multistart CSVs — the
+    elasticity / post-estimation files legitimately keep many rows per (spec, seed).
+    """
     if path.exists():
         existing = pd.read_csv(path, index_col=0 if index else None)
         df = pd.concat([existing, df])
+    if dedupe == 'all':
+        df = _dedupe_multistart(df, by=['spec', 'seed'], reflag_best=True)
+    elif dedupe == 'best':
+        df = _dedupe_multistart(df, by=None, reflag_best=False)
     df.to_csv(path, index=index)
 
 
@@ -728,12 +767,12 @@ def main(
                 opt_detail = compare_multistart_results({label: opt_starts})
                 print("\n=== All Starts ===")
                 print(opt_detail.to_string(index=False))
-                _append_csv(opt_detail, OPT_ALL_CSV, index=False)
+                _append_csv(opt_detail, OPT_ALL_CSV, index=False, dedupe='all')
 
                 opt_best = opt_detail[opt_detail['best']].drop(columns='best').set_index('spec')
                 print("\n=== Best per Specification ===")
                 print(opt_best.to_string())
-                _append_csv(opt_best, OPT_BEST_CSV)
+                _append_csv(opt_best, OPT_BEST_CSV, dedupe='best')
 
                 post = summarise_post_estimation({label: opt_starts}, product_data, include_supply=False)
                 print("\n=== Post-Estimation: Elasticities & Diversion Ratios ===")
