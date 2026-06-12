@@ -54,9 +54,9 @@ Use it to see the spread of α across specs. Tightly clustered bars = robust pri
 
 ## 19 — `19_price_coef_across_sims.png`
 
-`plot_price_coef_across_sims` (plot_results.py:1167). Scatter of `price_coef` per seed for the lowest-mean-objective spec. X-axis = seed (ordered by seed value), y-axis = α. Points colored by validity. Dashed line at mean α; dotted line at α = 0.
+`plot_price_coef_across_sims` (plot_results.py:1381). Scatter of `price_coef` (α), one point per simulation, for the spec with the lowest mean objective across its valid starts. X-axis = seed (sorted by numeric value, sparsely labeled), y-axis = α. Every plotted start is valid — the rows are pre-filtered by `_filter_valid`, so all points use the uniform `COL_VALID` color and there is no invalid category. A dashed line marks the mean α of inliers only (so outliers don't drag it); a dotted line marks α = 0. The y-axis is clipped to Tukey bounds `[Q1 − 3·IQR, Q3 + 3·IQR]` (when ≥ 6 points with non-zero IQR); α values outside those bounds render as labeled triangles at the panel edge rather than stretching the axis.
 
-Use it to read off the distribution of α within the preferred spec — bimodal scatter is the classic two-basin signature, which is the visual counterpart of `03_convergence_audit.txt`.
+Use it to read off the distribution of α within the preferred spec — multiple α clusters among the valid starts are a two-basin signature, the visual counterpart of `03_convergence_audit.txt`.
 ## 20 — `20_own_elas_boxplot.png`
 
 `plot_own_elas_boxplot` (plot_results.py:308). Box plot of own-price elasticities, one box per spec, using the best seed of each spec. Boxes show IQR, median line, whiskers, and outliers; an overlay strip plot jitters individual products to show within-spec dispersion.
