@@ -1184,7 +1184,7 @@ def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
     ax.barh(ys, means, color=COL_VALID, alpha=0.6, edgecolor='white', linewidth=0.5)
     # Error bars (±1 std)
     ax.errorbar(means, ys, xerr=stds, fmt='none', color='#444', linewidth=1.2,
-                capsize=3, capthick=1.2, label='±1 std')
+                capsize=3, capthick=1.2)
     # Min/max range markers
     for y, mn, mx in zip(ys, mins, maxs):
         ax.plot([mn, mx], [y, y], color='#888', linewidth=0.7, linestyle='--')
@@ -1201,7 +1201,15 @@ def plot_objective_spec_comparison(rows: list[dict], label: str, out_dir: Path):
     ax.set_title(f'{label} — Objective by Specification (mean ± std, range)\nsorted by mean',
                  fontweight='bold', fontsize=10)
     ax.invert_yaxis()
-    ax.legend(loc='lower right', fontsize=8)
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    legend_handles = [
+        Patch(facecolor=COL_VALID, alpha=0.6, edgecolor='white', label='mean'),
+        Line2D([0], [0], color='#444', linewidth=1.2, label='±1 std'),
+        Line2D([0], [0], color='#888', linewidth=0.7, linestyle='--',
+               marker='|', markeredgecolor='#555', label='min–max range'),
+    ]
+    ax.legend(handles=legend_handles, loc='lower right', fontsize=8)
     _footer(fig, f'{label} · Analysis 36 · Mean±std of GMM objective across valid random starts per spec')
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     _savefig(fig, out_dir, '36_objective_spec_comparison.png')
